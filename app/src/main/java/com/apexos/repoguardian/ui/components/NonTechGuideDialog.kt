@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.apexos.repoguardian.ui.theme.*
 
 data class GuideStep(
     val stepNumber: String,
@@ -42,37 +43,37 @@ fun NonTechGuideDialog(
         GuideStep(
             stepNumber = "1",
             title = "Connect Your GitHub",
-            description = "Sign in securely with a simple 8-letter code. Your password is never shared or stored on your device.",
+            description = "Authenticate securely with a one-time 8-character device code. Credentials are never sent to third-party servers.",
             icon = Icons.Default.VpnKey,
-            iconTint = Color(0xFF4285F4)
+            iconTint = BrandEmeraldLight
         ),
         GuideStep(
             stepNumber = "2",
-            title = "Choose Your Repository",
-            description = "Use the dropdown menu at the top to pick any project you want to understand, inspect, or build pipelines for.",
+            title = "Select Repository",
+            description = "Use the dropdown switcher at the top to select any project for security analysis, diff inspection, or CI/CD generation.",
             icon = Icons.Default.FolderOpen,
-            iconTint = Color(0xFFFBBC05)
+            iconTint = Color(0xFF60A5FA)
         ),
         GuideStep(
             stepNumber = "3",
-            title = "Pick an AI Brain (Model)",
-            description = "Download a private coding & reasoning model (like Qwen or DeepSeek-R1). It runs 100% offline on your phone with zero cloud API costs.",
+            title = "Choose AI Model (GGUF)",
+            description = "Download a private on-device model from the Hugging Face manager. Runs 100% offline with zero cloud API costs.",
             icon = Icons.Default.Memory,
-            iconTint = Color(0xFF34A853)
+            iconTint = BrandEmeraldLight
         ),
         GuideStep(
             stepNumber = "4",
-            title = "Turn On 'Think Mode'",
-            description = "Enable 'Think ON' to let the AI analyze your code step-by-step and show you its complete chain-of-thought reasoning process.",
+            title = "Activate Think Mode",
+            description = "Enable Think Mode to inspect the AI's step-by-step chain-of-thought reasoning before viewing fixes.",
             icon = Icons.Default.Psychology,
-            iconTint = Color(0xFF9C27B0)
+            iconTint = Color(0xFFA78BFA)
         ),
         GuideStep(
             stepNumber = "5",
-            title = "Ask Questions & Tap Quick Actions",
-            description = "Tap 'Explain Repo' to get a plain-English overview of how the project works, 'Review Commits' to catch bugs, or 'Generate CI/CD' to automate testing.",
+            title = "Review & Auto-PR",
+            description = "Inspect commits for bugs, explore diffs, and generate pull requests directly from AI suggestions in 1 tap.",
             icon = Icons.AutoMirrored.Filled.MenuBook,
-            iconTint = Color(0xFFEA4335)
+            iconTint = StatusPass
         )
     )
 
@@ -84,9 +85,9 @@ fun NonTechGuideDialog(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .fillMaxHeight(0.85f),
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp
+            shape = RoundedCornerShape(20.dp),
+            color = BrandSurface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
         ) {
             Column(
                 modifier = Modifier
@@ -105,16 +106,16 @@ fun NonTechGuideDialog(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(38.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
+                                .background(BrandEmeraldMuted),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.HelpOutline,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(24.dp)
+                                tint = BrandEmeraldLight,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
@@ -122,36 +123,37 @@ fun NonTechGuideDialog(
                             Text(
                                 text = "How to Use Repo Guardian",
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                color = BrandOnBg
                             )
                             Text(
-                                text = "Beginner & Non-Tech Friendly Guide",
+                                text = "Developer & Architecture Guide",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                color = BrandOnBgMuted
                             )
                         }
                     }
 
                     IconButton(onClick = { onDismiss(dontShowAgain) }) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = BrandOnBgMuted)
                     }
                 }
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = BrandBorder)
 
                 // Scrollable Steps List
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     steps.forEach { step ->
                         StepCard(step)
                     }
                 }
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = BrandBorder)
 
                 // Footer
                 Row(
@@ -165,20 +167,26 @@ fun NonTechGuideDialog(
                     ) {
                         Checkbox(
                             checked = dontShowAgain,
-                            onCheckedChange = { dontShowAgain = it }
+                            onCheckedChange = { dontShowAgain = it },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = BrandEmerald,
+                                checkmarkColor = OnEmerald,
+                                uncheckedColor = BrandBorder
+                            )
                         )
                         Text(
-                            text = "Don't show on start",
+                            text = "Don't show again",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            color = BrandOnBgMuted
                         )
                     }
 
                     Button(
                         onClick = { onDismiss(dontShowAgain) },
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
                     ) {
-                        Text("Got it! Let's Start", fontWeight = FontWeight.Bold)
+                        Text("Get Started", fontWeight = FontWeight.SemiBold, color = OnEmerald)
                     }
                 }
             }
@@ -189,8 +197,9 @@ fun NonTechGuideDialog(
 @Composable
 private fun StepCard(step: GuideStep) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(12.dp),
+        color = BrandSurfaceHigh,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -199,7 +208,7 @@ private fun StepCard(step: GuideStep) {
         ) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(34.dp)
                     .clip(CircleShape)
                     .background(step.iconTint.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
@@ -208,26 +217,24 @@ private fun StepCard(step: GuideStep) {
                     imageVector = step.icon,
                     contentDescription = null,
                     tint = step.iconTint,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Step ${step.stepNumber}: ${step.title}",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
+                Text(
+                    text = "Step ${step.stepNumber}: ${step.title}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = BrandOnBg
+                )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = step.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = BrandOnBgMuted,
                     lineHeight = 18.sp
                 )
             }

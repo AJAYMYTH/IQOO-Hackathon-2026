@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -29,49 +30,67 @@ fun CiCdGeneratorScreen(
     val uiState by viewModel.uiState.collectAsState()
 
     Scaffold(
+        containerColor = BrandBackground,
         topBar = {
-            TopAppBar(
-                title = { Text("CI/CD Generator") },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { viewModel.regenerate() },
-                        enabled = !uiState.isGenerating
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Regenerate")
-                    }
+            Surface(
+                color = GlassBackground,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    TopAppBar(
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            titleContentColor = BrandOnBg,
+                            actionIconContentColor = BrandOnBgMuted
+                        ),
+                        title = { Text("CI/CD Pipeline Generator", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
+                        navigationIcon = {
+                            IconButton(onClick = { navController.popBackStack() }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        actions = {
+                            IconButton(
+                                onClick = { viewModel.regenerate() },
+                                enabled = !uiState.isGenerating
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Regenerate")
+                            }
+                        }
+                    )
+                    HorizontalDivider(color = BrandBorder, thickness = 1.dp)
                 }
-            )
+            }
         },
         bottomBar = {
             if (uiState.generatedYaml.isNotBlank() && !uiState.committed) {
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shadowElevation = 8.dp
+                    color = GlassBackground,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder),
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding()
                 ) {
                     Button(
                         onClick = { viewModel.commitWorkflow() },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(16.dp)
+                            .height(50.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
                         enabled = !uiState.isCommitting
                     ) {
                         if (uiState.isCommitting) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
+                                color = OnEmerald
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Committing...")
+                            Text("Committing to GitHub...", color = OnEmerald)
                         } else {
-                            Icon(Icons.Default.CloudUpload, contentDescription = null)
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, tint = OnEmerald, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Commit Workflow to Repo")
+                            Text("Commit Workflow to Repository", color = OnEmerald, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -79,8 +98,9 @@ fun CiCdGeneratorScreen(
 
             if (uiState.committed) {
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = StatusPass.copy(alpha = 0.15f)
+                    color = BrandSurfaceElev,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StatusPass.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding()
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -89,7 +109,8 @@ fun CiCdGeneratorScreen(
                         Icon(
                             Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = StatusPass
+                            tint = StatusPass,
+                            modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
@@ -106,36 +127,45 @@ fun CiCdGeneratorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .background(BrandBackground)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Repo info
-            Card(shape = RoundedCornerShape(12.dp)) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = BrandSurface,
+                border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+            ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = "${uiState.owner}/${uiState.repo}",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = BrandOnBg
                     )
 
                     if (uiState.detectedLanguage != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Detected: ",
-                                style = MaterialTheme.typography.bodyMedium
+                                text = "Detected Stack: ",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BrandOnBgMuted
                             )
+                            Spacer(Modifier.width(6.dp))
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = StatusInfo.copy(alpha = 0.15f)
+                                shape = RoundedCornerShape(6.dp),
+                                color = BrandSurfaceHigh,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
                             ) {
                                 Text(
                                     text = uiState.detectedLanguage ?: "Unknown",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = StatusInfo,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BrandEmeraldLight,
                                     fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                 )
                             }
                         }
@@ -145,32 +175,33 @@ fun CiCdGeneratorScreen(
 
             // Loading state
             if (uiState.isGenerating) {
-                Card(
+                Surface(
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                    )
+                    color = BrandSurfaceElev,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmerald.copy(alpha = 0.4f))
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
+                            .padding(18.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 3.dp
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.5.dp,
+                            color = BrandEmerald
                         )
-                        Spacer(modifier = Modifier.width(16.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
                         Column {
                             Text(
-                                text = "Generating CI/CD Workflow",
-                                fontWeight = FontWeight.SemiBold
+                                text = "Synthesizing CI/CD Pipeline",
+                                fontWeight = FontWeight.SemiBold,
+                                color = BrandOnBg
                             )
                             Text(
-                                text = "Using on-device AI...",
+                                text = "Generating tailored GitHub Actions workflow...",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                color = BrandOnBgMuted
                             )
                         }
                     }
@@ -180,39 +211,46 @@ fun CiCdGeneratorScreen(
             // YAML preview
             if (uiState.generatedYaml.isNotBlank()) {
                 Text(
-                    text = "Generated Workflow",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+                    text = "Generated Workflow (.github/workflows/ci.yml)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = BrandOnBg
                 )
 
-                // Editable YAML
                 OutlinedTextField(
                     value = uiState.generatedYaml,
                     onValueChange = { viewModel.updateYaml(it) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 300.dp),
+                        .heightIn(min = 320.dp),
                     textStyle = MaterialTheme.typography.bodySmall.copy(
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
                     ),
                     shape = RoundedCornerShape(12.dp),
-                    label = { Text(".github/workflows/ci.yml") }
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = CodeBackground,
+                        unfocusedContainerColor = CodeBackground,
+                        focusedBorderColor = BrandEmerald,
+                        unfocusedBorderColor = BrandBorder,
+                        focusedTextColor = BrandOnBg,
+                        unfocusedTextColor = BrandOnBg
+                    )
                 )
             }
 
             // Error
             uiState.error?.let { error ->
-                Card(
+                Surface(
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    )
+                    color = StatusFail.copy(alpha = 0.1f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StatusFail.copy(alpha = 0.3f))
                 ) {
                     Text(
                         text = error,
                         modifier = Modifier.padding(16.dp),
-                        color = MaterialTheme.colorScheme.onErrorContainer
+                        color = StatusFail
                     )
                 }
             }

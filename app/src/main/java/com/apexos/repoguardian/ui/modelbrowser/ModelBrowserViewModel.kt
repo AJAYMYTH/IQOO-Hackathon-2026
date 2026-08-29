@@ -190,7 +190,7 @@ class ModelBrowserViewModel @Inject constructor(
                     isLoadingModel = false,
                     activeModelPath = path,
                     downloadedModels = modelDownloadManager.getDownloadedModels(),
-                    successMessage = "✓ ${file.name} loaded successfully and set as active model!"
+                    successMessage = "${file.name} loaded successfully and set as active model."
                 )
                 Log.d("ModelBrowserVM", "Loaded model: $path")
             } catch (e: Exception) {

@@ -183,7 +183,7 @@ class ModelDownloadService : Service() {
 
     private fun showCompletedNotification(modelName: String, filename: String) {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("✓ Download Complete")
+            .setContentTitle("Download Complete")
             .setContentText("$modelName is ready and loaded for AI code review")
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setAutoCancel(true)

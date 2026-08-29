@@ -231,7 +231,7 @@ fun SplashScreen(
                     }
                 } else {
                     Text(
-                        text = if (uiState.error != null) "⚠ ${uiState.statusMessage}" else uiState.statusMessage,
+                        text = uiState.statusMessage,
                         style = MaterialTheme.typography.labelMedium,
                         color = if (uiState.error != null) StatusFail else BrandEmerald,
                         fontWeight = FontWeight.Medium

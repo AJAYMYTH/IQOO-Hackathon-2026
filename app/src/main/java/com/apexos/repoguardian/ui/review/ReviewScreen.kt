@@ -35,43 +35,62 @@ fun ReviewScreen(
     val uiState by viewModel.uiState.collectAsState()
 
     Scaffold(
+        containerColor = BrandBackground,
         topBar = {
-            TopAppBar(
-                title = { Text("Code Review") },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
+            Surface(
+                color = GlassBackground,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    TopAppBar(
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            titleContentColor = BrandOnBg,
+                            actionIconContentColor = BrandOnBgMuted
+                        ),
+                        title = {
+                            Text("Code Review & Analysis", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = { navController.popBackStack() }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        }
+                    )
+                    HorizontalDivider(color = BrandBorder, thickness = 1.dp)
                 }
-            )
+            }
         },
         bottomBar = {
-            // Open PR button
             val review = uiState.reviewResult
             if (review != null && review.hasIssue && uiState.createdPr == null) {
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shadowElevation = 8.dp
+                    color = GlassBackground,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder),
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding()
                 ) {
                     Button(
                         onClick = { viewModel.openPullRequest() },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(16.dp)
+                            .height(50.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
                         enabled = !uiState.isCreatingPr
                     ) {
                         if (uiState.isCreatingPr) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
+                                color = OnEmerald
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Creating PR...")
+                            Text("Creating Pull Request...", color = OnEmerald)
                         } else {
-                            Icon(Icons.AutoMirrored.Filled.CallMerge, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.CallMerge, contentDescription = null, tint = OnEmerald, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Open Pull Request")
+                            Text("Create Pull Request from Fixes", color = OnEmerald, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -80,8 +99,9 @@ fun ReviewScreen(
             // PR created banner
             if (uiState.createdPr != null) {
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = StatusPass.copy(alpha = 0.15f)
+                    color = BrandSurfaceElev,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StatusPass.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding()
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -90,18 +110,20 @@ fun ReviewScreen(
                         Icon(
                             Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = StatusPass
+                            tint = StatusPass,
+                            modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "PR #${uiState.createdPr?.number} Created!",
+                                text = "PR #${uiState.createdPr?.number} Created",
                                 fontWeight = FontWeight.Bold,
                                 color = StatusPass
                             )
                             Text(
                                 text = uiState.createdPr?.title ?: "",
-                                style = MaterialTheme.typography.bodySmall
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BrandOnBgMuted
                             )
                         }
                         TextButton(onClick = {
@@ -110,7 +132,7 @@ fun ReviewScreen(
                                 Routes.prStatus(uiState.owner, uiState.repo, pr.number)
                             )
                         }) {
-                            Text("View Status")
+                            Text("View Status", color = BrandEmeraldLight, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -120,36 +142,55 @@ fun ReviewScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                .background(BrandBackground),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // Commit info card
             item {
-                Card(
-                    shape = RoundedCornerShape(12.dp)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = BrandSurface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Commit ${uiState.sha.take(7)}",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontFamily = FontFamily.Monospace
-                            ),
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Commit",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = BrandOnBgSubtle
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = BrandSurfaceHigh
+                            ) {
+                                Text(
+                                    text = uiState.sha.take(7),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = BrandEmeraldLight,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                         uiState.commitDiff?.commit?.message?.let { msg ->
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = msg,
-                                style = MaterialTheme.typography.bodyMedium
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = BrandOnBg
                             )
                         }
                         uiState.commitDiff?.files?.let { files ->
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = "${files.size} file(s) changed",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                color = BrandOnBgMuted
                             )
                         }
                     }
@@ -160,13 +201,13 @@ fun ReviewScreen(
             if (uiState.isLoadingDiff) {
                 item {
                     Box(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
+                            CircularProgressIndicator(color = BrandEmerald)
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("Loading diff...")
+                            Text("Loading commit diff...", color = BrandOnBgMuted, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -174,32 +215,33 @@ fun ReviewScreen(
 
             if (uiState.isAnalyzing) {
                 item {
-                    Card(
+                    Surface(
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                        )
+                        color = BrandSurfaceElev,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmerald.copy(alpha = 0.4f))
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(20.dp),
+                                .padding(18.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 3.dp
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.5.dp,
+                                color = BrandEmerald
                             )
-                            Spacer(modifier = Modifier.width(16.dp))
+                            Spacer(modifier = Modifier.width(14.dp))
                             Column {
                                 Text(
-                                    text = "AI Analysis in Progress",
-                                    fontWeight = FontWeight.SemiBold
+                                    text = "AI Security & Code Review in Progress",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = BrandOnBg
                                 )
                                 Text(
-                                    text = "Running on-device inference...",
+                                    text = "Running local on-device inference via llama.cpp...",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    color = BrandOnBgMuted
                                 )
                             }
                         }
@@ -218,19 +260,23 @@ fun ReviewScreen(
             uiState.reviewResult?.let { review ->
                 item {
                     Text(
-                        text = "AI Analysis",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        text = "AI Review Findings",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandOnBg
                     )
                 }
 
                 // Summary
                 item {
-                    Card(
+                    Surface(
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (review.hasIssue) SeverityWarning.copy(alpha = 0.1f)
-                                            else StatusPass.copy(alpha = 0.1f)
+                        color = if (review.hasIssue) SeverityWarning.copy(alpha = 0.08f)
+                                else StatusPass.copy(alpha = 0.08f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (review.hasIssue) SeverityWarning.copy(alpha = 0.3f)
+                            else StatusPass.copy(alpha = 0.3f)
                         )
                     ) {
                         Row(
@@ -240,12 +286,14 @@ fun ReviewScreen(
                             Icon(
                                 imageVector = if (review.hasIssue) Icons.Default.Warning else Icons.Default.CheckCircle,
                                 contentDescription = null,
-                                tint = if (review.hasIssue) SeverityWarning else StatusPass
+                                tint = if (review.hasIssue) SeverityWarning else StatusPass,
+                                modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
                                 text = review.summary,
-                                style = MaterialTheme.typography.bodyMedium
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = BrandOnBg
                             )
                         }
                     }
@@ -260,16 +308,16 @@ fun ReviewScreen(
             // Error
             uiState.error?.let { error ->
                 item {
-                    Card(
+                    Surface(
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        )
+                        color = StatusFail.copy(alpha = 0.1f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, StatusFail.copy(alpha = 0.3f))
                     ) {
                         Text(
                             text = error,
                             modifier = Modifier.padding(16.dp),
-                            color = MaterialTheme.colorScheme.onErrorContainer
+                            color = StatusFail,
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
@@ -280,11 +328,14 @@ fun ReviewScreen(
 
 @Composable
 fun DiffCard(filename: String, patch: String?, status: String) {
-    Card(shape = RoundedCornerShape(12.dp)) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+    ) {
         Column {
-            // File header
             Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant
+                color = BrandSurfaceHigh
             ) {
                 Row(
                     modifier = Modifier
@@ -309,15 +360,15 @@ fun DiffCard(filename: String, patch: String?, status: String) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = filename,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Medium
                         ),
-                        fontWeight = FontWeight.Medium
+                        color = BrandOnBg
                     )
                 }
             }
 
-            // Patch content
             if (patch != null) {
                 Box(
                     modifier = Modifier
@@ -329,10 +380,10 @@ fun DiffCard(filename: String, patch: String?, status: String) {
                     Column {
                         patch.lines().forEach { line ->
                             val (bgColor, textColor) = when {
-                                line.startsWith("+") -> CodeAddition.copy(alpha = 0.3f) to Color.Green.copy(alpha = 0.9f)
-                                line.startsWith("-") -> CodeDeletion.copy(alpha = 0.3f) to Color.Red.copy(alpha = 0.9f)
-                                line.startsWith("@@") -> Color.Transparent to Color.Cyan.copy(alpha = 0.6f)
-                                else -> Color.Transparent to Color.White.copy(alpha = 0.8f)
+                                line.startsWith("+") -> CodeAddition to BrandEmeraldLight
+                                line.startsWith("-") -> CodeDeletion to StatusFail
+                                line.startsWith("@@") -> Color.Transparent to StatusInfo
+                                else -> Color.Transparent to BrandOnBgMuted
                             }
                             Text(
                                 text = line,
@@ -351,10 +402,10 @@ fun DiffCard(filename: String, patch: String?, status: String) {
                 }
             } else {
                 Text(
-                    text = "(Binary file)",
+                    text = "(Binary file content)",
                     modifier = Modifier.padding(12.dp),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    color = BrandOnBgSubtle
                 )
             }
         }
@@ -363,10 +414,13 @@ fun DiffCard(filename: String, patch: String?, status: String) {
 
 @Composable
 fun IssueCard(issue: CodeIssue) {
-    Card(shape = RoundedCornerShape(12.dp)) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Severity badge
                 Surface(
                     shape = RoundedCornerShape(6.dp),
                     color = when (issue.severity.lowercase()) {
@@ -395,7 +449,7 @@ fun IssueCard(issue: CodeIssue) {
                         style = MaterialTheme.typography.bodySmall.copy(
                             fontFamily = FontFamily.Monospace
                         ),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        color = BrandOnBgMuted
                     )
                 }
 
@@ -405,23 +459,25 @@ fun IssueCard(issue: CodeIssue) {
                         style = MaterialTheme.typography.bodySmall.copy(
                             fontFamily = FontFamily.Monospace
                         ),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        color = BrandOnBgMuted
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Text(
                 text = issue.description,
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyMedium,
+                color = BrandOnBg
             )
 
             issue.fix?.let { fix ->
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = StatusPass.copy(alpha = 0.1f)
+                    color = BrandEmeraldMuted.copy(alpha = 0.3f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmerald.copy(alpha = 0.3f))
                 ) {
                     Row(
                         modifier = Modifier.padding(12.dp),
@@ -431,13 +487,13 @@ fun IssueCard(issue: CodeIssue) {
                             Icons.Default.Lightbulb,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = StatusPass
+                            tint = BrandEmeraldLight
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = fix,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = BrandOnBg
                         )
                     }
                 }

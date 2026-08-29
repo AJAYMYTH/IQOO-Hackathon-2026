@@ -16,12 +16,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.apexos.repoguardian.data.llm.ModelState
 import com.apexos.repoguardian.navigation.Routes
+import com.apexos.repoguardian.ui.components.AppBottomBar
 import com.apexos.repoguardian.ui.theme.*
 import java.io.File
 
@@ -38,51 +40,47 @@ val backendOptions = listOf(
     BackendOption(
         id = "cpu",
         name = "CPU",
-        description = "Runs inference on the phone's main processor (ARM Cortex cores). This is the default and most compatible option.",
+        description = "Runs inference on the main processor (ARM Cortex cores). Default and most compatible option.",
         pros = listOf(
-            "Works on all Android devices",
-            "Most stable and well-tested",
-            "No driver dependencies"
+            "Compatible across all Android devices",
+            "Highest stability and precision",
+            "Zero driver dependencies"
         ),
         cons = listOf(
-            "Slowest inference speed",
-            "Higher battery consumption during long tasks"
+            "Standard inference speed",
+            "Higher power consumption during sustained generation"
         ),
-        recommended = "Use this as your safe default. Start here and switch to GPU/NPU only after benchmarking."
+        recommended = "Safe baseline. Start here and switch to GPU/NPU after benchmarking."
     ),
     BackendOption(
         id = "gpu",
         name = "GPU (Adreno OpenCL)",
-        description = "Offloads computation to the Adreno GPU via OpenCL. Can significantly speed up inference on Snapdragon devices.",
+        description = "Offloads matrix computation to the Adreno GPU via OpenCL for accelerated throughput on Snapdragon chipsets.",
         pros = listOf(
-            "2-3x faster than CPU for large models",
-            "Good parallelism for matrix operations",
-            "Supported on most Snapdragon devices"
+            "2-3x speedup over CPU for larger models",
+            "High parallelism for prompt ingestion",
+            "Supported across modern Snapdragon devices"
         ),
         cons = listOf(
-            "May not support all model operations",
-            "Can conflict with display rendering under heavy load",
-            "Requires Adreno GPU (Snapdragon-specific)"
+            "Higher VRAM footprint",
+            "Requires Snapdragon Adreno compute drivers"
         ),
-        recommended = "Use if CPU is too slow and you've verified stability on your device."
+        recommended = "Recommended for fast interactive review generation on supported devices."
     ),
     BackendOption(
         id = "npu",
         name = "NPU (Hexagon HTP)",
-        description = "Uses Qualcomm's Hexagon Neural Processing Unit for hardware-accelerated AI inference. This is the fastest option on supported devices like iQOO 15.",
+        description = "Leverages Qualcomm Hexagon Neural Processing Unit for hardware-accelerated INT4/INT8 tensor math with minimal thermal throttling.",
         pros = listOf(
-            "Fastest inference (up to 5x vs CPU)",
-            "Best power efficiency for AI workloads",
-            "Purpose-built for neural network operations",
-            "Scores bonus points for hackathon rubric (creative NPU use)"
+            "Highest power efficiency and throughput",
+            "Dedicated tensor acceleration pipeline",
+            "Native Snapdragon 8 Elite / Gen architecture support"
         ),
         cons = listOf(
-            "Experimental support in llama.cpp (ggml-hexagon)",
-            "May not support all operations for every model",
-            "Only available on recent Snapdragon chips",
-            "Requires testing on actual target device"
+            "Requires supported quantized tensor formats",
+            "Platform specific acceleration"
         ),
-        recommended = "Use for demos if pre-tested and stable on your exact device. Keep CPU as fallback."
+        recommended = "Optimal for Snapdragon 8 Elite and iQOO high-performance execution."
     )
 )
 
@@ -97,7 +95,6 @@ fun SettingsScreen(
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
 
-    // Show save message
     LaunchedEffect(uiState.savedMessage) {
         uiState.savedMessage?.let {
             snackbarHostState.showSnackbar(it)
@@ -105,14 +102,13 @@ fun SettingsScreen(
         }
     }
 
-    // Logout confirmation dialog
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
-            icon = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Log Out from GitHub?") },
+            icon = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = StatusFail) },
+            title = { Text("Log Out from GitHub?", color = BrandOnBg) },
             text = {
-                Text("This will clear your stored GitHub access token and reset the active repository session. You will be redirected to the sign-in screen.")
+                Text("This will clear your stored GitHub access token and reset the active repository session. You will be redirected to the sign-in screen.", color = BrandOnBgMuted)
             },
             confirmButton = {
                 Button(
@@ -124,70 +120,101 @@ fun SettingsScreen(
                             }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusFail)
                 ) {
-                    Text("Log Out")
+                    Text("Log Out", color = Color.White)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showLogoutDialog = false }) {
-                    Text("Cancel")
+                OutlinedButton(
+                    onClick = { showLogoutDialog = false },
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+                ) {
+                    Text("Cancel", color = BrandOnBg)
                 }
-            }
+            },
+            containerColor = BrandSurfaceHigh
         )
     }
 
-    // Clear cache confirmation dialog
     if (showClearCacheDialog) {
         AlertDialog(
             onDismissRequest = { showClearCacheDialog = false },
-            icon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-            title = { Text("Clear Application Cache?") },
+            icon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = BrandEmeraldLight) },
+            title = { Text("Clear Application Cache?", color = BrandOnBg) },
             text = {
-                Text("This will delete temporary HTTP responses, diff caches, and speech audio buffers to free up device storage (${uiState.appCacheSizeFormatted}).")
+                Text("This will delete temporary HTTP responses, diff caches, and speech audio buffers (${uiState.appCacheSizeFormatted}).", color = BrandOnBgMuted)
             },
             confirmButton = {
                 Button(
                     onClick = {
                         showClearCacheDialog = false
                         viewModel.clearAppCache()
-                    }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
                 ) {
-                    Text("Clear Cache")
+                    Text("Clear Cache", color = OnEmerald)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearCacheDialog = false }) {
-                    Text("Cancel")
+                OutlinedButton(
+                    onClick = { showClearCacheDialog = false },
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+                ) {
+                    Text("Cancel", color = BrandOnBg)
                 }
-            }
+            },
+            containerColor = BrandSurfaceHigh
         )
     }
 
     Scaffold(
+        containerColor = BrandBackground,
         topBar = {
-            TopAppBar(
-                title = { Text("Settings & Profile") },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    TextButton(
-                        onClick = { viewModel.saveSettings() },
-                        enabled = !uiState.isSaving
-                    ) {
-                        if (uiState.isSaving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Text("Save", fontWeight = FontWeight.Bold)
+            Surface(
+                color = GlassBackground,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    TopAppBar(
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            titleContentColor = BrandOnBg,
+                            actionIconContentColor = BrandOnBgMuted
+                        ),
+                        title = {
+                            Text("Settings & Engine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = { navController.popBackStack() }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        actions = {
+                            TextButton(
+                                onClick = { viewModel.saveSettings() },
+                                enabled = !uiState.isSaving
+                            ) {
+                                if (uiState.isSaving) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = BrandEmerald
+                                    )
+                                } else {
+                                    Text("Save", fontWeight = FontWeight.Bold, color = BrandEmeraldLight)
+                                }
+                            }
                         }
-                    }
+                    )
+                    HorizontalDivider(color = BrandBorder, thickness = 1.dp)
                 }
+            }
+        },
+        bottomBar = {
+            AppBottomBar(
+                currentRoute = Routes.SETTINGS,
+                navController = navController
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -196,11 +223,12 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .background(BrandBackground)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // === USER PROFILE SECTION ===
+            // Profile section
             UserProfileCard(
                 username = uiState.user?.login ?: uiState.selectedRepoOwner.ifBlank { "GitHub User" },
                 displayName = uiState.user?.name,
@@ -209,7 +237,7 @@ fun SettingsScreen(
                 onLogoutClick = { showLogoutDialog = true }
             )
 
-            // === STORAGE & CACHE MANAGEMENT ===
+            // Storage and cache section
             StorageCacheCard(
                 cacheSize = uiState.appCacheSizeFormatted,
                 modelsSize = uiState.modelsSizeFormatted,
@@ -219,28 +247,35 @@ fun SettingsScreen(
                 onBrowseModelsClick = { navController.navigate(Routes.MODEL_BROWSER) }
             )
 
-            HorizontalDivider()
+            HorizontalDivider(color = BrandBorder)
 
-            // === Model State ===
-            Card(
+            // Model status card
+            Surface(
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = when (uiState.modelState) {
-                        is ModelState.Loaded -> StatusPass.copy(alpha = 0.1f)
-                        is ModelState.Error -> StatusFail.copy(alpha = 0.1f)
-                        is ModelState.Loading -> StatusPending.copy(alpha = 0.1f)
-                        else -> MaterialTheme.colorScheme.surfaceVariant
+                color = when (uiState.modelState) {
+                    is ModelState.Loaded -> StatusPass.copy(alpha = 0.08f)
+                    is ModelState.Error -> StatusFail.copy(alpha = 0.08f)
+                    is ModelState.Loading -> StatusPending.copy(alpha = 0.08f)
+                    else -> BrandSurface
+                },
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    when (uiState.modelState) {
+                        is ModelState.Loaded -> StatusPass.copy(alpha = 0.3f)
+                        is ModelState.Error -> StatusFail.copy(alpha = 0.3f)
+                        is ModelState.Loading -> StatusPending.copy(alpha = 0.3f)
+                        else -> BrandBorder
                     }
                 )
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = when (uiState.modelState) {
                             is ModelState.Loaded -> Icons.Default.CheckCircle
-                            is ModelState.Error -> Icons.Default.Error
+                            is ModelState.Error -> Icons.Default.ErrorOutline
                             is ModelState.Loading -> Icons.Default.HourglassTop
                             else -> Icons.Default.Info
                         },
@@ -249,10 +284,11 @@ fun SettingsScreen(
                             is ModelState.Loaded -> StatusPass
                             is ModelState.Error -> StatusFail
                             is ModelState.Loading -> StatusPending
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        }
+                            else -> BrandOnBgMuted
+                        },
+                        modifier = Modifier.size(20.dp)
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = when (val state = uiState.modelState) {
                             is ModelState.Loaded -> state.modelInfo
@@ -260,41 +296,52 @@ fun SettingsScreen(
                             is ModelState.Loading -> "Loading model..."
                             else -> "No model loaded. Download or select a GGUF model"
                         },
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BrandOnBg
                     )
                 }
             }
 
-            // === Model Path ===
+            // Model path input
             Text(
-                text = "Model Configuration",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                text = "Model Path Configuration",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = BrandOnBg
             )
 
             OutlinedTextField(
                 value = uiState.modelPath,
                 onValueChange = { viewModel.updateModelPath(it) },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Active GGUF Model Path") },
-                placeholder = { Text("/sdcard/models/qwen2.5-coder-3b-q4_k_m.gguf") },
+                label = { Text("Active GGUF Model Path", color = BrandOnBgSubtle) },
+                placeholder = { Text("/sdcard/models/qwen2.5-coder-3b-q4_k_m.gguf", color = BrandOnBgSubtle) },
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = BrandSurface,
+                    unfocusedContainerColor = BrandSurface,
+                    focusedBorderColor = BrandEmerald,
+                    unfocusedBorderColor = BrandBorder,
+                    focusedTextColor = BrandOnBg,
+                    unfocusedTextColor = BrandOnBg
+                )
             )
 
-            HorizontalDivider()
+            HorizontalDivider(color = BrandBorder)
 
-            // === Backend Selector ===
+            // Hardware acceleration & backend options
             Text(
                 text = "Inference Backend & Acceleration",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = BrandOnBg
             )
 
             Text(
-                text = "Choose how the AI model runs on your device. Each backend uses different hardware for inference.",
+                text = "Select the hardware execution backend for local llama.cpp computation.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                color = BrandOnBgMuted
             )
 
             backendOptions.forEach { option ->
@@ -305,19 +352,20 @@ fun SettingsScreen(
                 )
             }
 
-            HorizontalDivider()
+            HorizontalDivider(color = BrandBorder)
 
-            // === Custom Rules ===
+            // Custom review rules
             Text(
                 text = "Custom Review Rules",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = BrandOnBg
             )
 
             Text(
-                text = "Add custom rules for the AI reviewer. These will be included in every code review prompt.",
+                text = "Custom rules injected into the prompt for on-device code reviews.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                color = BrandOnBgMuted
             )
 
             OutlinedTextField(
@@ -325,54 +373,67 @@ fun SettingsScreen(
                 onValueChange = { viewModel.updateCustomRules(it) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 120.dp),
-                label = { Text("Review rules") },
+                    .heightIn(min = 110.dp),
+                label = { Text("Review Rules", color = BrandOnBgSubtle) },
                 placeholder = {
-                    Text("e.g.:\n- Flag any hardcoded credentials\n- Prefer val over var in Kotlin\n- Check for memory leaks in Android lifecycle")
+                    Text("- Flag hardcoded credentials\n- Enforce Kotlin immutability\n- Check Android lifecycle memory safety", color = BrandOnBgSubtle)
                 },
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = BrandSurface,
+                    unfocusedContainerColor = BrandSurface,
+                    focusedBorderColor = BrandEmerald,
+                    unfocusedBorderColor = BrandBorder,
+                    focusedTextColor = BrandOnBg,
+                    unfocusedTextColor = BrandOnBg
+                )
             )
 
             Button(
                 onClick = { viewModel.saveSettings() },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
                 enabled = !uiState.isSaving
             ) {
                 if (uiState.isSaving) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
+                        color = OnEmerald
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Saving...")
+                    Text("Saving...", color = OnEmerald)
                 } else {
-                    Icon(Icons.Default.Save, contentDescription = null)
+                    Icon(Icons.Default.Save, contentDescription = null, tint = OnEmerald, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Save Settings")
+                    Text("Save Configuration", color = OnEmerald, fontWeight = FontWeight.SemiBold)
                 }
             }
 
-            HorizontalDivider()
+            HorizontalDivider(color = BrandBorder)
 
-            // === llama.cpp Architecture & Customizations ===
+            // Architecture Info
             Text(
-                text = "On-Device Engine: llama.cpp",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                text = "Architecture & Engine Details",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = BrandOnBg
             )
             LlamaInfoCard()
 
-            HorizontalDivider()
+            HorizontalDivider(color = BrandBorder)
 
-            // === Open Source Credits ===
+            // Open source credits
             Text(
-                text = "Open Source Software Credits",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                text = "Open Source Software Acknowledgments",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = BrandOnBg
             )
             OpenSourceCreditsCard()
+
+            Spacer(Modifier.height(16.dp))
         }
     }
 }
@@ -385,12 +446,11 @@ fun UserProfileCard(
     publicRepos: Int,
     onLogoutClick: () -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-        )
+        shape = RoundedCornerShape(14.dp),
+        color = BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -400,41 +460,41 @@ fun UserProfileCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Avatar badge
                 Box(
                     modifier = Modifier
-                        .size(52.dp)
+                        .size(46.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
+                        .background(BrandEmeraldMuted),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = username.take(2).uppercase(),
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimary
+                        color = BrandEmeraldLight
                     )
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(14.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = displayName ?: username,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandOnBg
                     )
                     Text(
                         text = "@$username",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        color = BrandOnBgMuted
                     )
                 }
 
-                // Auth status chip
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = StatusPass.copy(alpha = 0.15f)
+                    shape = RoundedCornerShape(12.dp),
+                    color = StatusPass.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StatusPass.copy(alpha = 0.25f))
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -451,14 +511,14 @@ fun UserProfileCard(
                             text = "Connected",
                             style = MaterialTheme.typography.labelSmall,
                             color = StatusPass,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
             }
 
             if (activeRepo != null) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalDivider(color = BrandBorder)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -468,21 +528,21 @@ fun UserProfileCard(
                         Icon(
                             Icons.Default.Folder,
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                            modifier = Modifier.size(15.dp),
+                            tint = BrandEmeraldLight
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "Active Repository:",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            color = BrandOnBgMuted
                         )
                     }
                     Text(
                         text = activeRepo,
                         style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        fontWeight = FontWeight.SemiBold,
+                        color = BrandEmeraldLight
                     )
                 }
             }
@@ -491,9 +551,8 @@ fun UserProfileCard(
                 onClick = onLogoutClick,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                )
+                border = androidx.compose.foundation.BorderStroke(1.dp, StatusFail.copy(alpha = 0.4f)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusFail)
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.Logout,
@@ -501,7 +560,7 @@ fun UserProfileCard(
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Log Out from GitHub")
+                Text("Sign Out from GitHub")
             }
         }
     }
@@ -516,12 +575,11 @@ fun StorageCacheCard(
     onDeleteModelClick: (File) -> Unit,
     onBrowseModelsClick: () -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        shape = RoundedCornerShape(14.dp),
+        color = BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -534,42 +592,46 @@ fun StorageCacheCard(
                 Icon(
                     Icons.Default.Storage,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = BrandEmeraldLight,
+                    modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Storage & Cache Management",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    text = "Storage & Cache",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = BrandOnBg
                 )
             }
 
             // Stats row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Surface(
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surface
+                    shape = RoundedCornerShape(10.dp),
+                    color = BrandSurfaceHigh,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("App Cache", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(cacheSize, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("App Cache", style = MaterialTheme.typography.labelSmall, color = BrandOnBgSubtle)
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(cacheSize, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = BrandOnBg)
                     }
                 }
 
                 Surface(
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surface
+                    shape = RoundedCornerShape(10.dp),
+                    color = BrandSurfaceHigh,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("GGUF Models", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(modelsSize, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("GGUF Models", style = MaterialTheme.typography.labelSmall, color = BrandOnBgSubtle)
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(modelsSize, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = BrandEmeraldLight)
                     }
                 }
             }
@@ -578,15 +640,17 @@ fun StorageCacheCard(
             if (downloadedModels.isNotEmpty()) {
                 Text(
                     text = "Downloaded Models (${downloadedModels.size}):",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.SemiBold
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = BrandOnBgMuted
                 )
 
                 downloadedModels.forEach { file ->
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surface
+                        color = BrandSurfaceHigh,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -596,24 +660,25 @@ fun StorageCacheCard(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = file.name,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = BrandOnBg
                                 )
                                 Text(
                                     text = "${file.length() / (1024 * 1024)} MB",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BrandOnBgMuted
                                 )
                             }
                             IconButton(
                                 onClick = { onDeleteModelClick(file) },
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
                                     Icons.Default.Delete,
                                     contentDescription = "Delete model",
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(18.dp)
+                                    tint = StatusFail.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
@@ -629,21 +694,23 @@ fun StorageCacheCard(
                 OutlinedButton(
                     onClick = onClearCacheClick,
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
                 ) {
-                    Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(15.dp), tint = BrandOnBg)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Clear Cache")
+                    Text("Clear Cache", color = BrandOnBg)
                 }
 
                 Button(
                     onClick = onBrowseModelsClick,
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandSurfaceElev)
                 ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(15.dp), tint = BrandEmeraldLight)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Browse Models")
+                    Text("Browse Models", color = BrandOnBg)
                 }
             }
         }
@@ -656,24 +723,19 @@ fun BackendCard(
     isSelected: Boolean,
     onSelect: () -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onSelect() },
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected)
-                MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant
-        ),
-        border = if (isSelected)
-            CardDefaults.outlinedCardBorder().copy(
-                brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary)
-            )
-        else null
+        color = if (isSelected) BrandSurfaceElev else BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isSelected) BrandEmerald.copy(alpha = 0.6f) else BrandBorder
+        )
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
@@ -683,24 +745,21 @@ fun BackendCard(
             ) {
                 Text(
                     text = option.name,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = if (isSelected)
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (isSelected) BrandEmeraldLight else BrandOnBg
                 )
                 RadioButton(
                     selected = isSelected,
-                    onClick = { onSelect() }
+                    onClick = { onSelect() },
+                    colors = RadioButtonDefaults.colors(selectedColor = BrandEmerald)
                 )
             }
 
             Text(
                 text = option.description,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (isSelected)
-                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                color = BrandOnBgMuted
             )
 
             // Pros
@@ -712,11 +771,9 @@ fun BackendCard(
             )
             option.pros.forEach { pro ->
                 Text(
-                    text = "  + $pro",
+                    text = "+ $pro",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isSelected)
-                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    color = BrandOnBgMuted
                 )
             }
 
@@ -729,29 +786,23 @@ fun BackendCard(
             )
             option.cons.forEach { con ->
                 Text(
-                    text = "  - $con",
+                    text = "- $con",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isSelected)
-                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    color = BrandOnBgMuted
                 )
             }
 
             // Recommendation
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = if (isSelected)
-                    MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
-                else MaterialTheme.colorScheme.surface.copy(alpha = 0.3f)
+                color = BrandSurfaceHigh,
+                border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
             ) {
                 Text(
                     text = "Recommendation: ${option.recommended}",
                     style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(8.dp),
-                    color = if (isSelected)
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = BrandOnBgMuted
                 )
             }
         }
@@ -760,51 +811,50 @@ fun BackendCard(
 
 @Composable
 fun LlamaInfoCard() {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        color = BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
                 text = "1. Why llama.cpp for On-Device Inference?",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = BrandEmeraldLight
             )
             Text(
                 text = "llama.cpp is a pure C/C++ inference engine with zero heavy runtime dependencies. It supports ARM NEON SIMD, FP16/INT4 quantization (Q4_K_M, Q8_0), and enables 100% offline, privacy-first AI code reviews directly on mobile hardware without sending code to remote servers.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                color = BrandOnBgMuted
             )
 
             Text(
                 text = "2. Snapdragon Hardware Acceleration",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = BrandEmeraldLight
             )
             Text(
                 text = "On the iQOO 15 (Snapdragon 8 Elite / Gen series), llama.cpp utilizes OpenCL GPU compute and Hexagon NPU matrix multiplication (HTP) for accelerated token generation and ultra-low latency.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                color = BrandOnBgMuted
             )
 
             Text(
                 text = "3. Hugging Face GGUF Integration",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = BrandEmeraldLight
             )
             Text(
                 text = "Allows one-tap discovery, size-filtered downloading, and instant switching of mobile-optimized code models.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                color = BrandOnBgMuted
             )
         }
     }
@@ -822,29 +872,28 @@ fun OpenSourceCreditsCard() {
         Pair("AndroidX DataStore", "Apache 2.0 • Google LLC\nAsynchronous key-value data storage.")
     )
 
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        color = BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             ossLibraries.forEach { (name, details) ->
                 Column {
                     Text(
                         text = name,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = BrandOnBg
                     )
                     Text(
                         text = details,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        style = MaterialTheme.typography.labelSmall,
+                        color = BrandOnBgMuted
                     )
                 }
             }

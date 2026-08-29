@@ -372,7 +372,7 @@ private fun WaitingState(
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                if (codeCopied) "Code Copied ✓" else "Copy Auth Code",
+                if (codeCopied) "Code Copied to Clipboard" else "Copy Auth Code",
                 fontWeight = FontWeight.SemiBold,
                 color = if (codeCopied) StatusPass else OnEmerald
             )
