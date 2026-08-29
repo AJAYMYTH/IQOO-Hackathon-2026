@@ -16,6 +16,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -280,102 +283,119 @@ fun DashboardScreen(
                 }
             }
 
-            when {
-                uiState.isLoading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = BrandEmerald, strokeWidth = 2.5.dp)
-                            Spacer(Modifier.height(16.dp))
-                            Text("Loading repository data...", style = MaterialTheme.typography.bodySmall, color = BrandOnBgMuted)
-                        }
-                    }
+            val refreshState = rememberPullToRefreshState()
+            PullToRefreshBox(
+                isRefreshing = uiState.isLoading,
+                onRefresh = { viewModel.loadDashboard() },
+                state = refreshState,
+                modifier = Modifier.fillMaxSize(),
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        state = refreshState,
+                        isRefreshing = uiState.isLoading,
+                        containerColor = BrandSurfaceElev,
+                        color = BrandEmeraldLight,
+                        modifier = Modifier.align(Alignment.TopCenter)
+                    )
                 }
-                uiState.error != null -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(24.dp)
+            ) {
+                when {
+                    uiState.isLoading && uiState.commits.isEmpty() -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = StatusFail, modifier = Modifier.size(36.dp))
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = uiState.error ?: "Failed to load commits",
-                                color = StatusFail,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(
-                                onClick = { viewModel.loadDashboard() },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = BrandSurfaceElev)
-                            ) {
-                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Retry", color = BrandOnBg)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = BrandEmerald, strokeWidth = 2.5.dp)
+                                Spacer(Modifier.height(16.dp))
+                                Text("Loading repository data...", style = MaterialTheme.typography.bodySmall, color = BrandOnBgMuted)
                             }
                         }
                     }
-                }
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Overview Card
-                        item {
-                            RepoSummaryCard(
-                                owner = uiState.repoOwner,
-                                name = uiState.repoName,
-                                commitsCount = uiState.commits.size,
-                                onBrowseClick = { navController.navigate(Routes.REPO_PICKER) }
-                            )
-                        }
-
-                        // Section Title
-                        item {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp, bottom = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                    uiState.error != null && uiState.commits.isEmpty() -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(24.dp)
                             ) {
+                                Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = StatusFail, modifier = Modifier.size(36.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
                                 Text(
-                                    text = "Recent Commits",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = BrandOnBg
+                                    text = uiState.error ?: "Failed to load commits",
+                                    color = StatusFail,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
                                 )
-                                Text(
-                                    text = "${uiState.commits.size} commits",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = BrandOnBgMuted
-                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = { viewModel.loadDashboard() },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandSurfaceElev)
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Retry", color = BrandOnBg)
+                                }
                             }
                         }
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Overview Card
+                            item {
+                                RepoSummaryCard(
+                                    owner = uiState.repoOwner,
+                                    name = uiState.repoName,
+                                    commitsCount = uiState.commits.size,
+                                    onBrowseClick = { navController.navigate(Routes.REPO_PICKER) }
+                                )
+                            }
 
-                        // Commit list items
-                        items(uiState.commits) { commit ->
-                            CommitItem(
-                                commit = commit,
-                                onClick = {
-                                    navController.navigate(
-                                        Routes.review(uiState.repoOwner, uiState.repoName, commit.sha)
+                            // Section Title
+                            item {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp, bottom = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Recent Commits",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrandOnBg
+                                    )
+                                    Text(
+                                        text = "${uiState.commits.size} commits",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = BrandOnBgMuted
                                     )
                                 }
-                            )
-                        }
+                            }
 
-                        item {
-                            Spacer(modifier = Modifier.height(60.dp))
+                            // Commit list items
+                            items(uiState.commits) { commit ->
+                                CommitItem(
+                                    commit = commit,
+                                    onClick = {
+                                        navController.navigate(
+                                            Routes.review(uiState.repoOwner, uiState.repoName, commit.sha)
+                                        )
+                                    }
+                                )
+                            }
+
+                            item {
+                                Spacer(modifier = Modifier.height(60.dp))
+                            }
                         }
                     }
                 }

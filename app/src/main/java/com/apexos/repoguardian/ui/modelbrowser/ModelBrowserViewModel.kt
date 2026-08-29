@@ -28,6 +28,7 @@ data class ModelBrowserUiState(
     val searchQuery: String = "coder gguf",
     val searchResults: List<HfModelSearchResult> = emptyList(),
     val isSearching: Boolean = false,
+    val isRefreshing: Boolean = false,
     val selectedModel: HfModelSearchResult? = null,
     val modelFiles: List<HfModelFile> = emptyList(),
     val isLoadingFiles: Boolean = false,
@@ -94,13 +95,37 @@ class ModelBrowserViewModel @Inject constructor(
             val activePath = preferencesManager.getModelPath()
             _uiState.value = _uiState.value.copy(
                 downloadedModels = downloaded,
-                activeModelPath = activePath
+                activeModelPath = activePath,
+                isRefreshing = false
             )
+        }
+    }
+
+    fun refreshCurrentTab() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isRefreshing = true)
+            when (_uiState.value.selectedTab) {
+                0 -> {
+                    refreshState()
+                }
+                1 -> {
+                    search()
+                    _uiState.value = _uiState.value.copy(isRefreshing = false)
+                }
+                2 -> {
+                    refreshState()
+                }
+            }
         }
     }
 
     fun updateSearchQuery(query: String) {
         _uiState.value = _uiState.value.copy(searchQuery = query)
+    }
+
+    fun searchWithQuery(query: String) {
+        _uiState.value = _uiState.value.copy(searchQuery = query, selectedModel = null)
+        search()
     }
 
     fun search() {

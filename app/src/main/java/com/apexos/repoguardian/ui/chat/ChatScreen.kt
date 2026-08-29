@@ -318,17 +318,18 @@ fun ChatScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(BrandBackground)
+                    .background(Color.Transparent)
                     .imePadding()
             ) {
-                Surface(
-                    color = GlassBackground,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Transparent)
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 6.dp)
+                            .padding(vertical = 4.dp)
                     ) {
                         // Think Mode Toggle & Quick Prompt Chips
                         Row(
