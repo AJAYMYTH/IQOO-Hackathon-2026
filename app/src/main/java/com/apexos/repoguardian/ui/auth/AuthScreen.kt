@@ -107,37 +107,61 @@ fun AuthScreen(
                         }
                     }
 
+                    LaunchedEffect(state.response.userCode) {
+                        clipboardManager.setText(AnnotatedString(state.response.userCode))
+                        codeCopied = true
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Copy code button
+                    // Open GitHub with prefilled code button (Primary action)
+                    Button(
+                        onClick = {
+                            val targetUrl = state.response.verificationUriComplete
+                                ?: "https://github.com/login/device?user_code=${state.response.userCode}"
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl))
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.OpenInBrowser, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Open GitHub (Auto-Fills Code)")
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Copy code button (Secondary fallback)
                     OutlinedButton(
                         onClick = {
                             clipboardManager.setText(AnnotatedString(state.response.userCode))
                             codeCopied = true
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(Icons.Default.ContentCopy, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (codeCopied) "Copied!" else "Copy Code")
+                        Text(if (codeCopied) "Code Auto-Copied to Clipboard ✓" else "Copy Code")
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Open GitHub button
-                    Button(
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(state.response.verificationUri))
-                            context.startActivity(intent)
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
                     ) {
-                        Icon(Icons.Default.OpenInBrowser, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Open GitHub")
+                        Text(
+                            text = "💡 Tapping 'Open GitHub' automatically fills in your code in the browser. You only need to tap Continue!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
                     }
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
 
                     // Polling indicator
                     CircularProgressIndicator(

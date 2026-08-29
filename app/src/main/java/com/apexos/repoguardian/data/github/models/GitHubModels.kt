@@ -16,6 +16,7 @@ data class DeviceCodeResponse(
     @Json(name = "device_code") val deviceCode: String,
     @Json(name = "user_code") val userCode: String,
     @Json(name = "verification_uri") val verificationUri: String,
+    @Json(name = "verification_uri_complete") val verificationUriComplete: String? = null,
     @Json(name = "expires_in") val expiresIn: Int,
     val interval: Int
 )
