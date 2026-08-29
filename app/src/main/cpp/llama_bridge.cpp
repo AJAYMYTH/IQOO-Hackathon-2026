@@ -3,6 +3,7 @@
 #include <vector>
 #include <mutex>
 #include <algorithm>
+#include <thread>
 #include <android/log.h>
 
 #define TAG "LlamaBridge"
@@ -26,16 +27,16 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_loadModel(
     llama_backend_init();
 
     const char *path = env->GetStringUTFChars(modelPath, nullptr);
-    LOGI("Loading GGUF model from: %s with %d GPU layers", path, nGpuLayers);
+    LOGI("Loading GGUF model from: %s with %d GPU layers", path ? path : "null", nGpuLayers);
 
     llama_model_params model_params = llama_model_default_params();
     model_params.n_gpu_layers = nGpuLayers;
 
     llama_model *model = llama_model_load_from_file(path, model_params);
-    env->ReleaseStringUTFChars(modelPath, path);
+    if (path) env->ReleaseStringUTFChars(modelPath, path);
 
     if (model == nullptr) {
-        LOGE("Failed to load model from path: %s", path ? path : "null");
+        LOGE("Failed to load model from path");
         return 0;
     }
 
@@ -55,12 +56,14 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_createContext(
         return 0;
     }
 
+    int n_threads = std::max(1, std::min(6, (int)std::thread::hardware_concurrency()));
+
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = contextSize > 0 ? contextSize : 2048;
     ctx_params.n_batch = 512;
     ctx_params.n_ubatch = 512;
-    ctx_params.n_threads = 4;
-    ctx_params.n_threads_batch = 4;
+    ctx_params.n_threads = n_threads;
+    ctx_params.n_threads_batch = n_threads;
     ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_DISABLED;
 
     llama_context *ctx = llama_init_from_model(model, ctx_params);
@@ -69,7 +72,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_createContext(
         return 0;
     }
 
-    LOGI("Context created successfully with size %d", ctx_params.n_ctx);
+    LOGI("Context created successfully with size %d, threads: %d", ctx_params.n_ctx, n_threads);
     return reinterpret_cast<jlong>(ctx);
 }
 
@@ -109,12 +112,23 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
     // Clear KV cache before generation
     llama_memory_clear(llama_get_memory(ctx), false);
 
-    // Chunked prompt evaluation to stay within n_batch (512)
+    // Prompt evaluation using explicit batch positions and logits on last token only
+    llama_batch batch = llama_batch_init(512, 0, 1);
     for (size_t b = 0; b < prompt_tokens.size(); b += 512) {
         int32_t n_eval = std::min((int32_t)(prompt_tokens.size() - b), 512);
-        llama_batch batch = llama_batch_get_one(prompt_tokens.data() + b, n_eval);
+        batch.n_tokens = 0;
+        for (int32_t j = 0; j < n_eval; j++) {
+            bool is_last = (b + j == prompt_tokens.size() - 1);
+            batch.token[j] = prompt_tokens[b + j];
+            batch.pos[j] = (llama_pos)(b + j);
+            batch.n_seq_id[j] = 1;
+            batch.seq_id[j][0] = 0;
+            batch.logits[j] = is_last ? 1 : 0;
+        }
+        batch.n_tokens = n_eval;
         if (llama_decode(ctx, batch) != 0) {
             LOGE("Prompt evaluation decode failed at chunk offset %zu", b);
+            llama_batch_free(batch);
             return env->NewStringUTF("Error: decode failed during prompt evaluation");
         }
     }
@@ -127,6 +141,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
 
     std::string result;
     int max_gen = maxTokens > 0 ? maxTokens : 1024;
+    int n_cur = (int)prompt_tokens.size();
     LOGI("Starting on-device generation with %d prompt tokens, max_gen: %d", (int)prompt_tokens.size(), max_gen);
 
     for (int i = 0; i < max_gen; i++) {
@@ -142,13 +157,22 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
             result.append(buf, n);
         }
 
-        llama_batch batch = llama_batch_get_one(&new_token_id, 1);
+        batch.n_tokens = 0;
+        batch.token[0] = new_token_id;
+        batch.pos[0] = (llama_pos)n_cur;
+        batch.n_seq_id[0] = 1;
+        batch.seq_id[0][0] = 0;
+        batch.logits[0] = 1;
+        batch.n_tokens = 1;
+        n_cur++;
+
         if (llama_decode(ctx, batch) != 0) {
             LOGE("Decode failed at generation step %d", i);
             break;
         }
     }
 
+    llama_batch_free(batch);
     llama_sampler_free(smpl);
     LOGI("Generation finished, generated %zu characters", result.size());
     return env->NewStringUTF(result.c_str());
@@ -200,12 +224,23 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
     // Clear KV cache before generation
     llama_memory_clear(llama_get_memory(ctx), false);
 
-    // Chunked prompt evaluation to stay within n_batch (512)
+    // Prompt evaluation using explicit batch positions and logits on last token only
+    llama_batch batch = llama_batch_init(512, 0, 1);
     for (size_t b = 0; b < prompt_tokens.size(); b += 512) {
         int32_t n_eval = std::min((int32_t)(prompt_tokens.size() - b), 512);
-        llama_batch batch = llama_batch_get_one(prompt_tokens.data() + b, n_eval);
+        batch.n_tokens = 0;
+        for (int32_t j = 0; j < n_eval; j++) {
+            bool is_last = (b + j == prompt_tokens.size() - 1);
+            batch.token[j] = prompt_tokens[b + j];
+            batch.pos[j] = (llama_pos)(b + j);
+            batch.n_seq_id[j] = 1;
+            batch.seq_id[j][0] = 0;
+            batch.logits[j] = is_last ? 1 : 0;
+        }
+        batch.n_tokens = n_eval;
         if (llama_decode(ctx, batch) != 0) {
             LOGE("Streaming prompt evaluation decode failed at chunk offset %zu", b);
+            llama_batch_free(batch);
             return env->NewStringUTF("Error: decode failed during prompt evaluation");
         }
     }
@@ -218,6 +253,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
 
     std::string result;
     int max_gen = maxTokens > 0 ? maxTokens : 1024;
+    int n_cur = (int)prompt_tokens.size();
     LOGI("Starting streaming generation with %d prompt tokens, max_gen: %d", (int)prompt_tokens.size(), max_gen);
 
     for (int i = 0; i < max_gen; i++) {
@@ -248,7 +284,15 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
             }
         }
 
-        llama_batch batch = llama_batch_get_one(&new_token_id, 1);
+        batch.n_tokens = 0;
+        batch.token[0] = new_token_id;
+        batch.pos[0] = (llama_pos)n_cur;
+        batch.n_seq_id[0] = 1;
+        batch.seq_id[0][0] = 0;
+        batch.logits[0] = 1;
+        batch.n_tokens = 1;
+        n_cur++;
+
         if (llama_decode(ctx, batch) != 0) {
             LOGE("Streaming decode failed at step %d", i);
             break;
@@ -258,6 +302,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
     if (callbackClass != nullptr) {
         env->DeleteLocalRef(callbackClass);
     }
+    llama_batch_free(batch);
     llama_sampler_free(smpl);
     LOGI("Streaming finished, generated %zu characters", result.size());
     return env->NewStringUTF(result.c_str());

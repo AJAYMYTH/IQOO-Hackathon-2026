@@ -417,13 +417,13 @@ Live repository data loaded from GitHub REST API ($fileCountText, $commitCountTe
                 }
 
                 val fileTreeSection = if (ctx.allFiles.isNotEmpty()) {
-                    val shown = ctx.allFiles.take(45).joinToString("\n") { "  - $it" }
-                    val extra = if (ctx.allFiles.size > 45) "\n  ... (${ctx.allFiles.size - 45} more files in repository tree)" else ""
-                    "Repository File Tree (${ctx.allFiles.size} total files indexed):\n$shown$extra"
+                    val shown = ctx.allFiles.take(25).joinToString("\n") { "  - $it" }
+                    val extra = if (ctx.allFiles.size > 25) "\n  ... (${ctx.allFiles.size - 25} more files)" else ""
+                    "Repository File Tree (${ctx.allFiles.size} total files):\n$shown$extra"
                 } else if (ctx.rootFiles.isNotEmpty()) {
                     "Root Files:\n" + ctx.rootFiles.joinToString("\n") { "  - $it" }
                 } else {
-                    "Repository file tree empty or not yet loaded"
+                    "Repository file tree not loaded"
                 }
 
                 val errorNotice = if (!ctx.lastSyncError.isNullOrBlank()) {
@@ -432,15 +432,14 @@ Live repository data loaded from GitHub REST API ($fileCountText, $commitCountTe
 
                 val systemPrompt = """
 Active Repository: $owner/$repo
-Description: ${ctx.description}
-Language: ${ctx.language}
-Default Branch: ${ctx.defaultBranch}
-Stars: ${ctx.stars} | Forks: ${ctx.forks} | Open Issues: ${ctx.openIssuesCount}
+Description: ${ctx.description.take(150)}
+Language: ${ctx.language} | Default Branch: ${ctx.defaultBranch}
+Stars: ${ctx.stars} | Open Issues: ${ctx.openIssuesCount}
 $errorNotice
 $fileTreeSection
 
-README Excerpt:
-${ctx.readmeExcerpt}
+README:
+${ctx.readmeExcerpt.take(400)}
 
 Recent Commits:
 $commitsSummary
@@ -505,7 +504,7 @@ $dynamicGitHubData
         val retrievedBuilder = StringBuilder()
         val lowerText = userText.lowercase()
 
-        Log.d(TAG, "Extracting relevant GitHub repository sources for prompt: \"$userText\"")
+        AppLogger.d(TAG, "Extracting relevant GitHub repository sources for prompt: \"$userText\"")
 
         // 1. Identify specific file mentions from prompt
         val matchedFiles = mutableSetOf<String>()
@@ -562,32 +561,32 @@ $dynamicGitHubData
                 path.endsWith("CMakeLists.txt") ||
                 path.endsWith("AndroidManifest.xml")
             }
-            matchedFiles.addAll(manifests.take(3))
+            matchedFiles.addAll(manifests.take(2))
         }
 
         // Retrieve real source code from GitHub REST API
-        val filesToFetch = matchedFiles.take(4)
+        val filesToFetch = matchedFiles.take(2)
         if (filesToFetch.isNotEmpty()) {
-            Log.i(TAG, "Retrieving ${filesToFetch.size} real source file(s) from GitHub REST API: $filesToFetch")
+            AppLogger.i(TAG, "Retrieving ${filesToFetch.size} real source file(s) from GitHub REST API: $filesToFetch")
             retrievedBuilder.appendLine("=== [RETRIEVED REAL GITHUB SOURCE CODE] ===")
             for (path in filesToFetch) {
                 when (val fileResult = gitHubRepository.getFileText(owner, repo, path, ref = liveCtx.defaultBranch)) {
                     is ApiResult.Success -> {
                         val content = fileResult.data
-                        val truncatedContent = if (content.length > 2500) {
-                            content.take(2500) + "\n... [Content truncated for context window]"
+                        val truncatedContent = if (content.length > 1200) {
+                            content.take(1200) + "\n... [Content truncated]"
                         } else {
                             content
                         }
                         val ext = path.substringAfterLast('.', "text")
-                        retrievedBuilder.appendLine("#### Source File: `$path` (${content.lines().size} lines)")
+                        retrievedBuilder.appendLine("#### Source File: `$path`")
                         retrievedBuilder.appendLine("```$ext")
                         retrievedBuilder.appendLine(truncatedContent)
                         retrievedBuilder.appendLine("```")
                         retrievedBuilder.appendLine()
                     }
                     is ApiResult.Error -> {
-                        Log.w(TAG, "GitHub REST API could not fetch $path: ${fileResult.message}")
+                        AppLogger.w(TAG, "GitHub REST API could not fetch $path: ${fileResult.message}")
                         retrievedBuilder.appendLine("#### Source File: `$path` - [GitHub Retrieval Error: ${fileResult.message}]")
                         retrievedBuilder.appendLine()
                     }
@@ -607,18 +606,18 @@ $dynamicGitHubData
             if (topCommits.isNotEmpty()) {
                 retrievedBuilder.appendLine("=== [RETRIEVED LIVE COMMIT DIFFS FROM GITHUB] ===")
                 for (c in topCommits) {
-                    Log.i(TAG, "Retrieving commit diff from GitHub REST API for sha=${c.sha}")
+                    AppLogger.i(TAG, "Retrieving commit diff from GitHub REST API for sha=${c.sha}")
                     when (val diffResult = gitHubRepository.getCommitDiff(owner, repo, c.sha)) {
                         is ApiResult.Success -> {
                             val diff = diffResult.data
                             val msg = c.commit.message.lines().firstOrNull() ?: ""
                             val author = c.commit.author?.name ?: "Unknown"
                             retrievedBuilder.appendLine("#### Commit ${c.sha.take(7)}: \"$msg\" (by $author)")
-                            diff.files?.take(3)?.forEach { file ->
+                            diff.files?.take(2)?.forEach { file ->
                                 retrievedBuilder.appendLine("- Changed file: `${file.filename}` (+${file.additions} -${file.deletions})")
                                 if (!file.patch.isNullOrBlank()) {
-                                    val truncatedPatch = if (file.patch.length > 1200) {
-                                        file.patch.take(1200) + "\n... (diff patch truncated)"
+                                    val truncatedPatch = if (file.patch.length > 600) {
+                                        file.patch.take(600) + "\n... (diff truncated)"
                                     } else {
                                         file.patch
                                     }
@@ -637,6 +636,7 @@ $dynamicGitHubData
                 }
             }
         }
+
 
         // 3. Issues & PRs inspection
         if (lowerText.contains("issue") ||
