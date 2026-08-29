@@ -81,14 +81,19 @@ object AppModule {
     @Provides
     @Singleton
     @Named("huggingfaceClient")
-    fun provideHuggingFaceOkHttpClient(
-        loggingInterceptor: HttpLoggingInterceptor
-    ): OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(loggingInterceptor)
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(300, TimeUnit.SECONDS) // Long timeout for model downloads
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .build()
+    fun provideHuggingFaceOkHttpClient(): OkHttpClient {
+        val headerLogging = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.HEADERS
+        }
+        return OkHttpClient.Builder()
+            .addInterceptor(headerLogging)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(600, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .build()
+    }
 
     @Provides
     @Singleton
