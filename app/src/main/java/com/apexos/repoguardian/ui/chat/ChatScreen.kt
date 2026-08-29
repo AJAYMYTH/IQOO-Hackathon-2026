@@ -42,7 +42,7 @@ import com.apexos.repoguardian.ui.components.MarkdownContent
 import com.apexos.repoguardian.ui.components.NonTechGuideDialog
 import com.apexos.repoguardian.ui.theme.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ChatScreen(
     navController: NavController,
@@ -54,8 +54,10 @@ fun ChatScreen(
     var showGuide by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
+    val isImeVisible = WindowInsets.isImeVisible
+
     // Auto-scroll to newest message
-    LaunchedEffect(uiState.messages.size, uiState.isGenerating) {
+    LaunchedEffect(uiState.messages.size, uiState.isGenerating, isImeVisible) {
         if (uiState.messages.isNotEmpty()) {
             listState.animateScrollToItem(uiState.messages.size - 1)
         }
@@ -421,10 +423,12 @@ fun ChatScreen(
                     }
                 }
 
-                AppBottomBar(
-                    currentRoute = Routes.CHAT,
-                    navController = navController
-                )
+                if (!isImeVisible) {
+                    AppBottomBar(
+                        currentRoute = Routes.CHAT,
+                        navController = navController
+                    )
+                }
             }
         }
     ) { padding ->

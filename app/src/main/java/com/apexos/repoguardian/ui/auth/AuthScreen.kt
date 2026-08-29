@@ -8,6 +8,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,6 +24,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.res.painterResource
+import com.apexos.repoguardian.R
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
@@ -115,18 +118,18 @@ fun AuthScreen(
 
             // Header
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(BrandEmerald.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center
+                Surface(
+                    modifier = Modifier.size(44.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.White,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmeraldLight)
                 ) {
-                    Icon(
-                        Icons.Filled.Lock,
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp),
-                        tint = BrandEmerald
+                    Image(
+                        painter = painterResource(id = R.drawable.app_logo),
+                        contentDescription = "Repo Guardian Logo",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(6.dp)
                     )
                 }
                 Spacer(Modifier.width(12.dp))

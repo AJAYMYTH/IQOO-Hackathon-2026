@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.apexos.repoguardian.data.llm.ModelState
@@ -691,26 +692,26 @@ fun StorageCacheCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
+                Button(
                     onClick = onClearCacheClick,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).height(44.dp),
                     shape = RoundedCornerShape(10.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandEmeraldMuted.copy(alpha = 0.5f))
                 ) {
-                    Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(15.dp), tint = BrandOnBg)
+                    Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp), tint = BrandEmeraldLight)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Clear Cache", color = BrandOnBg)
+                    Text("Clear Cache", color = BrandEmeraldLight, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 }
 
                 Button(
                     onClick = onBrowseModelsClick,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).height(44.dp),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = BrandSurfaceElev)
                 ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(15.dp), tint = BrandEmeraldLight)
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = BrandEmeraldLight)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Browse Models", color = BrandOnBg)
+                    Text("Browse Models", color = BrandOnBg, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 }
             }
         }
@@ -728,11 +729,8 @@ fun BackendCard(
             .fillMaxWidth()
             .clickable { onSelect() },
         shape = RoundedCornerShape(12.dp),
-        color = if (isSelected) BrandSurfaceElev else BrandSurface,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isSelected) BrandEmerald.copy(alpha = 0.6f) else BrandBorder
-        )
+        color = BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
@@ -747,12 +745,15 @@ fun BackendCard(
                     text = option.name,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = if (isSelected) BrandEmeraldLight else BrandOnBg
+                    color = BrandOnBg
                 )
                 RadioButton(
                     selected = isSelected,
                     onClick = { onSelect() },
-                    colors = RadioButtonDefaults.colors(selectedColor = BrandEmerald)
+                    colors = RadioButtonDefaults.colors(
+                        selectedColor = BrandEmerald,
+                        unselectedColor = BrandOnBgSubtle
+                    )
                 )
             }
 

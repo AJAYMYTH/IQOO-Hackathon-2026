@@ -1,6 +1,7 @@
 package com.apexos.repoguardian.ui.splash
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -17,6 +18,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import com.apexos.repoguardian.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -144,34 +147,35 @@ fun SplashScreen(
             verticalArrangement = Arrangement.Center,
             modifier = Modifier.padding(horizontal = 40.dp)
         ) {
-            // Shield icon with ring
+            // Logo with ambient container
             Box(
                 modifier = Modifier
                     .alpha(iconAlpha)
                     .scale(iconScale),
                 contentAlignment = Alignment.Center
             ) {
-                // Outer ring
+                // Ambient glow outer ring
                 Box(
                     modifier = Modifier
-                        .size(112.dp)
-                        .clip(CircleShape)
-                        .background(BrandEmerald.copy(alpha = 0.08f))
+                        .size(116.dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(BrandEmerald.copy(alpha = 0.15f))
                 )
-                // Inner ring
-                Box(
-                    modifier = Modifier
-                        .size(84.dp)
-                        .clip(CircleShape)
-                        .background(BrandEmerald.copy(alpha = 0.12f))
-                )
-                // Icon
-                Icon(
-                    imageVector = Icons.Filled.Security,
-                    contentDescription = "Repo Guardian",
-                    modifier = Modifier.size(44.dp),
-                    tint = BrandEmerald
-                )
+                // Logo surface
+                Surface(
+                    modifier = Modifier.size(96.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.White,
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, BrandEmeraldLight)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.app_logo),
+                        contentDescription = "Repo Guardian Logo",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp)
+                    )
+                }
             }
 
             Spacer(Modifier.height(28.dp))

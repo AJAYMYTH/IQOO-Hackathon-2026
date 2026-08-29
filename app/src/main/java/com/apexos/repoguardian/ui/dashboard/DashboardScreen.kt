@@ -457,28 +457,7 @@ private fun RepoSummaryCard(
                     }
                 }
             }
-
-            Spacer(Modifier.height(14.dp))
-            HorizontalDivider(color = BrandBorder)
-            Spacer(Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                MetricPill(label = "Total Commits", value = "$commitsCount")
-                MetricPill(label = "Analysis Engine", value = "llama.cpp (On-Device)")
-            }
         }
-    }
-}
-
-@Composable
-private fun MetricPill(label: String, value: String) {
-    Column {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = BrandOnBgSubtle)
-        Spacer(Modifier.height(2.dp))
-        Text(text = value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = BrandOnBg)
     }
 }
 

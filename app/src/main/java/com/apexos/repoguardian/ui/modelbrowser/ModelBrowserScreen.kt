@@ -252,7 +252,7 @@ fun ModelBrowserScreen(
                             onClick = { viewModel.selectTab(2) },
                             text = {
                                 Text(
-                                    "Saved (${uiState.downloadedModels.size})",
+                                    "Downloaded (${uiState.downloadedModels.size})",
                                     color = if (uiState.selectedTab == 2) BrandEmeraldLight else BrandOnBgMuted,
                                     fontWeight = if (uiState.selectedTab == 2) FontWeight.Bold else FontWeight.Normal
                                 )
