@@ -344,19 +344,50 @@ class LlamaService @Inject constructor(
         val isThinking = isReasoningModel(preferencesManager.getModelPath() ?: "") && isThinkMode
         val fullPrompt = PromptBuilder.buildChatPrompt(userMessage, systemPrompt, isThinking)
         val localServerUrl = preferencesManager.getLocalServerUrl().trim()
-        val stopWords = listOf("<|im_end|>", "<|im_start|>", "<|endoftext|>", "<|eot_id|>", "</s>", "<end_of_turn>")
+        val stopWords = listOf(
+            "<|im_end|>",
+            "<|im_start|>",
+            "<|endoftext|>",
+            "<|eot_id|>",
+            "</s>",
+            "<end_of_turn>",
+            "<start_of_turn>",
+            "\n<|",
+            "\nUser:",
+            "\nAssistant:",
+            "\nHuman:",
+            "\nAI:",
+            "\nSystem:"
+        )
 
         // 1. If Local Server URL is configured, try it first
         if (localServerUrl.isNotBlank()) {
             AppLogger.i(TAG, "Initiating stream from local server: $localServerUrl")
             var receivedAnyToken = false
             var stopped = false
+            val seenLines = mutableSetOf<String>()
+            var lineBuf = StringBuilder()
             try {
                 val streamSuccess = streamFromLocalServer(fullPrompt, 4096, localServerUrl) { piece ->
                     if (stopped) return@streamFromLocalServer
                     if (stopWords.any { piece.contains(it) }) {
                         stopped = true
                         return@streamFromLocalServer
+                    }
+                    lineBuf.append(piece)
+                    if (piece.contains('\n')) {
+                        val lines = lineBuf.split('\n')
+                        for (i in 0 until lines.size - 1) {
+                            val clean = lines[i].trim().trim('#', '*', '-', '`', '>', ' ')
+                            if (clean.length >= 25) {
+                                if (seenLines.contains(clean)) {
+                                    stopped = true
+                                    return@streamFromLocalServer
+                                }
+                                seenLines.add(clean)
+                            }
+                        }
+                        lineBuf = StringBuilder(lines.last())
                     }
                     receivedAnyToken = true
                     trySend(piece)
@@ -377,11 +408,29 @@ class LlamaService @Inject constructor(
                     AppLogger.i(TAG, "Streaming chat tokens from on-device native LLM (prompt: ${fullPrompt.length} chars)...")
                     var tokenCount = 0
                     var stopped = false
+                    val seenLines = mutableSetOf<String>()
+                    var lineBuf = StringBuilder()
                     val result = LlamaBridge.generateStream(contextHandle, fullPrompt, 4096) { piece ->
                         if (stopped) return@generateStream
                         if (stopWords.any { piece.contains(it) }) {
                             stopped = true
                             return@generateStream
+                        }
+                        lineBuf.append(piece)
+                        if (piece.contains('\n')) {
+                            val lines = lineBuf.split('\n')
+                            for (i in 0 until lines.size - 1) {
+                                val clean = lines[i].trim().trim('#', '*', '-', '`', '>', ' ')
+                                if (clean.length >= 25) {
+                                    if (seenLines.contains(clean)) {
+                                        AppLogger.i(TAG, "Duplicate sentence detected in stream: \"$clean\", stopping stream")
+                                        stopped = true
+                                        return@generateStream
+                                    }
+                                    seenLines.add(clean)
+                                }
+                            }
+                            lineBuf = StringBuilder(lines.last())
                         }
                         tokenCount++
                         trySend(piece)

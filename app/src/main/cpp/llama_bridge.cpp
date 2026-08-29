@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <string>
 #include <vector>
+#include <unordered_set>
 #include <mutex>
 #include <algorithm>
 #include <thread>
@@ -84,12 +85,18 @@ static bool is_stop_sequence(const std::string & text) {
         "<|eot_id|>",
         "</s>",
         "<end_of_turn>",
+        "<start_of_turn>",
         "\n<|im_start|>",
         "\n<|im_end|>",
+        "\n<|",
         "\nUser:",
         "\nuser\n",
         "\nAssistant:",
-        "\nassistant\n"
+        "\nassistant\n",
+        "\nHuman:",
+        "\nAI:",
+        "\nSystem:",
+        "\nsystem\n"
     };
     for (const auto & stop : stop_words) {
         if (text.find(stop) != std::string::npos) {
@@ -107,12 +114,18 @@ static void trim_trailing_stop_sequences(std::string & text) {
         "<|eot_id|>",
         "</s>",
         "<end_of_turn>",
+        "<start_of_turn>",
         "\n<|im_start|>",
         "\n<|im_end|>",
+        "\n<|",
         "\nUser:",
         "\nuser\n",
         "\nAssistant:",
-        "\nassistant\n"
+        "\nassistant\n",
+        "\nHuman:",
+        "\nAI:",
+        "\nSystem:",
+        "\nsystem\n"
     };
     for (const auto & stop : stop_words) {
         size_t pos = text.find(stop);
@@ -184,14 +197,31 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
     auto t_prefill_end = std::chrono::high_resolution_clock::now();
     long long prefill_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_prefill_end - t_prefill_start).count();
 
-    // Init Sampler with Repetition Penalty & Temperature
+    // Init Sampler with DRY (Don't Repeat Yourself) and Repetition Penalties
     int32_t n_vocab = llama_vocab_n_tokens(vocab);
     llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
-    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(n_vocab, 64, 1.15f, 0.1f, 0.1f));
+
+    static const char * dry_breakers[] = { "\n", ":", "\"", "*", "`", ".", "!", "?" };
+    llama_sampler_chain_add(smpl, llama_sampler_init_dry(
+        vocab,
+        0.8f,   // dry_multiplier
+        1.75f,  // dry_base
+        2,      // dry_allowed_length
+        2048,   // dry_penalty_last_n
+        dry_breakers,
+        8
+    ));
+
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(n_vocab, 256, 1.20f, 0.2f, 0.2f));
     llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(smpl, llama_sampler_init_min_p(0.05f, 1));
-    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.3f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.4f));
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
+
+    // Feed prompt tokens to the sampler
+    for (size_t p = 0; p < prompt_tokens.size(); p++) {
+        llama_sampler_accept(smpl, prompt_tokens[p]);
+    }
 
     std::string result;
     int available_ctx = std::max(128, n_ctx - (int)prompt_tokens.size() - 4);
@@ -199,6 +229,10 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
     int n_cur = (int)prompt_tokens.size();
     int tokens_generated = 0;
     LOGI("Starting on-device generation: %zu prompt tokens (prefill: %lld ms, available_ctx: %d), max_gen: %d", prompt_tokens.size(), prefill_ms, available_ctx, max_gen);
+
+    std::unordered_set<std::string> seen_lines;
+    std::string current_line_buf;
+    bool loop_detected = false;
 
     auto t_gen_start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < max_gen; i++) {
@@ -218,6 +252,28 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
                 LOGI("Stop sequence reached at step %d: %s", i, piece.c_str());
                 break;
             }
+
+            // Check for line-level repetition loops
+            current_line_buf += piece;
+            size_t nl = current_line_buf.find('\n');
+            while (nl != std::string::npos) {
+                std::string raw = current_line_buf.substr(0, nl);
+                size_t s = raw.find_first_not_of(" \t\r-#*>`");
+                size_t e = raw.find_last_not_of(" \t\r");
+                if (s != std::string::npos && e != std::string::npos && (e >= s + 25)) {
+                    std::string line_core = raw.substr(s, e - s + 1);
+                    if (seen_lines.count(line_core) > 0) {
+                        LOGI("Duplicate line loop detected at step %d: \"%s\"", i, line_core.c_str());
+                        loop_detected = true;
+                        break;
+                    }
+                    seen_lines.insert(line_core);
+                }
+                current_line_buf = current_line_buf.substr(nl + 1);
+                nl = current_line_buf.find('\n');
+            }
+            if (loop_detected) break;
+
             result.append(piece);
             tokens_generated++;
         }
@@ -324,14 +380,31 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
     auto t_prefill_end = std::chrono::high_resolution_clock::now();
     long long prefill_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_prefill_end - t_prefill_start).count();
 
-    // Init Sampler with Repetition Penalty & Temperature
+    // Init Sampler with DRY (Don't Repeat Yourself) and Repetition Penalties
     int32_t n_vocab = llama_vocab_n_tokens(vocab);
     llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
-    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(n_vocab, 64, 1.15f, 0.1f, 0.1f));
+
+    static const char * dry_breakers[] = { "\n", ":", "\"", "*", "`", ".", "!", "?" };
+    llama_sampler_chain_add(smpl, llama_sampler_init_dry(
+        vocab,
+        0.8f,   // dry_multiplier
+        1.75f,  // dry_base
+        2,      // dry_allowed_length
+        2048,   // dry_penalty_last_n
+        dry_breakers,
+        8
+    ));
+
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(n_vocab, 256, 1.20f, 0.2f, 0.2f));
     llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(smpl, llama_sampler_init_min_p(0.05f, 1));
-    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.3f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.4f));
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
+
+    // Feed prompt tokens to the sampler
+    for (size_t p = 0; p < prompt_tokens.size(); p++) {
+        llama_sampler_accept(smpl, prompt_tokens[p]);
+    }
 
     std::string result;
     int available_ctx = std::max(128, n_ctx - (int)prompt_tokens.size() - 4);
@@ -339,6 +412,10 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
     int n_cur = (int)prompt_tokens.size();
     int tokens_generated = 0;
     LOGI("Starting streaming generation: %zu prompt tokens (prefill: %lld ms, available_ctx: %d), max_gen: %d", prompt_tokens.size(), prefill_ms, available_ctx, max_gen);
+
+    std::unordered_set<std::string> seen_lines;
+    std::string current_line_buf;
+    bool loop_detected = false;
 
     auto t_gen_start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < max_gen; i++) {
@@ -358,6 +435,28 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
                 LOGI("Streaming stop sequence encountered at step %d: %s", i, piece.c_str());
                 break;
             }
+
+            // Check for line-level repetition loops
+            current_line_buf += piece;
+            size_t nl = current_line_buf.find('\n');
+            while (nl != std::string::npos) {
+                std::string raw = current_line_buf.substr(0, nl);
+                size_t s = raw.find_first_not_of(" \t\r-#*>`");
+                size_t e = raw.find_last_not_of(" \t\r");
+                if (s != std::string::npos && e != std::string::npos && (e >= s + 25)) {
+                    std::string line_core = raw.substr(s, e - s + 1);
+                    if (seen_lines.count(line_core) > 0) {
+                        LOGI("Streaming duplicate line loop detected at step %d: \"%s\"", i, line_core.c_str());
+                        loop_detected = true;
+                        break;
+                    }
+                    seen_lines.insert(line_core);
+                }
+                current_line_buf = current_line_buf.substr(nl + 1);
+                nl = current_line_buf.find('\n');
+            }
+            if (loop_detected) break;
+
             result.append(piece);
             tokens_generated++;
 
