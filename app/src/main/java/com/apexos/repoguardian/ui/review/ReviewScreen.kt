@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.CallMerge
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -68,7 +69,7 @@ fun ReviewScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Creating PR...")
                         } else {
-                            Icon(Icons.Default.CallMerge, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.CallMerge, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Open Pull Request")
                         }

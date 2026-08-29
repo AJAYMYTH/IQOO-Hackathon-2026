@@ -15,7 +15,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.FactCheck
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
@@ -249,7 +251,7 @@ fun ChatScreen(
                 },
                 actions = {
                     IconButton(onClick = { showGuide = true }) {
-                        Icon(Icons.Default.HelpOutline, contentDescription = "Quick Guide")
+                        Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = "Quick Guide")
                     }
                     IconButton(onClick = { viewModel.clearChat() }) {
                         Icon(Icons.Default.DeleteOutline, contentDescription = "Clear Chat")
