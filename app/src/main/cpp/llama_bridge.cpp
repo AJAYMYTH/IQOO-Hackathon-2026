@@ -76,6 +76,52 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_createContext(
     return reinterpret_cast<jlong>(ctx);
 }
 
+static bool is_stop_sequence(const std::string & text) {
+    static const char * stop_words[] = {
+        "<|im_end|>",
+        "<|im_start|>",
+        "<|endoftext|>",
+        "<|eot_id|>",
+        "</s>",
+        "<end_of_turn>",
+        "\n<|im_start|>",
+        "\n<|im_end|>",
+        "\nUser:",
+        "\nuser\n",
+        "\nAssistant:",
+        "\nassistant\n"
+    };
+    for (const auto & stop : stop_words) {
+        if (text.find(stop) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void trim_trailing_stop_sequences(std::string & text) {
+    static const char * stop_words[] = {
+        "<|im_end|>",
+        "<|im_start|>",
+        "<|endoftext|>",
+        "<|eot_id|>",
+        "</s>",
+        "<end_of_turn>",
+        "\n<|im_start|>",
+        "\n<|im_end|>",
+        "\nUser:",
+        "\nuser\n",
+        "\nAssistant:",
+        "\nassistant\n"
+    };
+    for (const auto & stop : stop_words) {
+        size_t pos = text.find(stop);
+        if (pos != std::string::npos) {
+            text.resize(pos);
+        }
+    }
+}
+
 JNIEXPORT jstring JNICALL
 Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
         JNIEnv *env, jobject /* this */,
@@ -138,8 +184,11 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
     auto t_prefill_end = std::chrono::high_resolution_clock::now();
     long long prefill_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_prefill_end - t_prefill_start).count();
 
-    // Init Sampler
+    // Init Sampler with Repetition Penalty & Temperature
+    int32_t n_vocab = llama_vocab_n_tokens(vocab);
     llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(n_vocab, 64, 1.15f, 0.1f, 0.1f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(smpl, llama_sampler_init_min_p(0.05f, 1));
     llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.3f));
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
@@ -154,7 +203,9 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
     auto t_gen_start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < max_gen; i++) {
         llama_token new_token_id = llama_sampler_sample(smpl, ctx, -1);
-        if (llama_vocab_is_eog(vocab, new_token_id)) {
+        llama_sampler_accept(smpl, new_token_id);
+
+        if (llama_vocab_is_eog(vocab, new_token_id) || llama_vocab_is_control(vocab, new_token_id)) {
             LOGI("End of generation token reached at step %d", i);
             break;
         }
@@ -162,7 +213,12 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
         char buf[256];
         int n = llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
         if (n > 0) {
-            result.append(buf, n);
+            std::string piece(buf, n);
+            if (is_stop_sequence(piece) || is_stop_sequence(result + piece)) {
+                LOGI("Stop sequence reached at step %d: %s", i, piece.c_str());
+                break;
+            }
+            result.append(piece);
             tokens_generated++;
         }
 
@@ -184,6 +240,8 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
 
     llama_batch_free(batch);
     llama_sampler_free(smpl);
+
+    trim_trailing_stop_sequences(result);
 
     long long gen_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_gen_start).count();
     long long total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
@@ -266,8 +324,11 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
     auto t_prefill_end = std::chrono::high_resolution_clock::now();
     long long prefill_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_prefill_end - t_prefill_start).count();
 
-    // Init Sampler
+    // Init Sampler with Repetition Penalty & Temperature
+    int32_t n_vocab = llama_vocab_n_tokens(vocab);
     llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(n_vocab, 64, 1.15f, 0.1f, 0.1f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(smpl, llama_sampler_init_min_p(0.05f, 1));
     llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.3f));
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
@@ -282,7 +343,9 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
     auto t_gen_start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < max_gen; i++) {
         llama_token new_token_id = llama_sampler_sample(smpl, ctx, -1);
-        if (llama_vocab_is_eog(vocab, new_token_id)) {
+        llama_sampler_accept(smpl, new_token_id);
+
+        if (llama_vocab_is_eog(vocab, new_token_id) || llama_vocab_is_control(vocab, new_token_id)) {
             LOGI("Streaming end of generation token at step %d", i);
             break;
         }
@@ -291,6 +354,10 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
         int n = llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
         if (n > 0) {
             std::string piece(buf, n);
+            if (is_stop_sequence(piece) || is_stop_sequence(result + piece)) {
+                LOGI("Streaming stop sequence encountered at step %d: %s", i, piece.c_str());
+                break;
+            }
             result.append(piece);
             tokens_generated++;
 
@@ -330,6 +397,8 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
     }
     llama_batch_free(batch);
     llama_sampler_free(smpl);
+
+    trim_trailing_stop_sequences(result);
 
     long long gen_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_gen_start).count();
     long long total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();

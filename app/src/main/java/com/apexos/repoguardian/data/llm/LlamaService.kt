@@ -296,7 +296,7 @@ class LlamaService @Inject constructor(
             AppLogger.i(TAG, "Sending chat to local server: $localServerUrl")
             val serverResp = queryLocalServer(fullPrompt, 4096, localServerUrl)
             if (!serverResp.isNullOrBlank()) {
-                return@withContext serverResp
+                return@withContext cleanChatOutput(serverResp)
             }
         }
 
@@ -307,7 +307,7 @@ class LlamaService @Inject constructor(
                     AppLogger.i(TAG, "Running chat inference via on-device native LLM...")
                     val response = LlamaBridge.generate(contextHandle, fullPrompt, 4096)
                     if (response.isNotBlank() && !response.startsWith("Error:")) {
-                        return@withContext response
+                        return@withContext cleanChatOutput(response)
                     }
                 } catch (e: Exception) {
                     AppLogger.e(TAG, "Native chat inference failed", e)
@@ -344,13 +344,20 @@ class LlamaService @Inject constructor(
         val isThinking = isReasoningModel(preferencesManager.getModelPath() ?: "") && isThinkMode
         val fullPrompt = PromptBuilder.buildChatPrompt(userMessage, systemPrompt, isThinking)
         val localServerUrl = preferencesManager.getLocalServerUrl().trim()
+        val stopWords = listOf("<|im_end|>", "<|im_start|>", "<|endoftext|>", "<|eot_id|>", "</s>", "<end_of_turn>")
 
         // 1. If Local Server URL is configured, try it first
         if (localServerUrl.isNotBlank()) {
             AppLogger.i(TAG, "Initiating stream from local server: $localServerUrl")
             var receivedAnyToken = false
+            var stopped = false
             try {
                 val streamSuccess = streamFromLocalServer(fullPrompt, 4096, localServerUrl) { piece ->
+                    if (stopped) return@streamFromLocalServer
+                    if (stopWords.any { piece.contains(it) }) {
+                        stopped = true
+                        return@streamFromLocalServer
+                    }
                     receivedAnyToken = true
                     trySend(piece)
                 }
@@ -369,7 +376,13 @@ class LlamaService @Inject constructor(
                 try {
                     AppLogger.i(TAG, "Streaming chat tokens from on-device native LLM (prompt: ${fullPrompt.length} chars)...")
                     var tokenCount = 0
+                    var stopped = false
                     val result = LlamaBridge.generateStream(contextHandle, fullPrompt, 4096) { piece ->
+                        if (stopped) return@generateStream
+                        if (stopWords.any { piece.contains(it) }) {
+                            stopped = true
+                            return@generateStream
+                        }
                         tokenCount++
                         trySend(piece)
                     }
@@ -550,6 +563,26 @@ class LlamaService @Inject constructor(
         return raw.replace(Regex("^```ya?ml\\s*", RegexOption.IGNORE_CASE), "")
             .replace(Regex("```\\s*$"), "")
             .trim()
+    }
+
+    private fun cleanChatOutput(raw: String): String {
+        var clean = raw
+        val stopWords = listOf(
+            "<|im_end|>",
+            "<|im_start|>",
+            "<|endoftext|>",
+            "<|eot_id|>",
+            "</s>",
+            "<end_of_turn>",
+            "\nUser:",
+            "\nAssistant:"
+        )
+        for (stop in stopWords) {
+            if (clean.contains(stop)) {
+                clean = clean.substringBefore(stop)
+            }
+        }
+        return clean.trimEnd()
     }
 
     fun isLoaded(): Boolean {
