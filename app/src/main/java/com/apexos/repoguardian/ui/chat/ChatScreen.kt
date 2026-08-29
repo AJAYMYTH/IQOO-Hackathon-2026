@@ -461,6 +461,12 @@ fun ChatScreen(
                         val clip = ClipData.newPlainText("Code", code)
                         clipboard?.setPrimaryClip(clip)
                         Toast.makeText(context, "Code copied to clipboard", Toast.LENGTH_SHORT).show()
+                    },
+                    onCopyResponse = { text ->
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        val clip = ClipData.newPlainText("AI Response", text)
+                        clipboard?.setPrimaryClip(clip)
+                        Toast.makeText(context, "Response copied to clipboard", Toast.LENGTH_SHORT).show()
                     }
                 )
             }
@@ -483,7 +489,8 @@ fun ChatScreen(
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
-    onCopyCode: (String) -> Unit
+    onCopyCode: (String) -> Unit,
+    onCopyResponse: (String) -> Unit
 ) {
     val isUser = message.isUser
 
@@ -535,31 +542,70 @@ private fun MessageBubble(
                         onCopyCode = onCopyCode
                     )
 
-                    if (message.metrics != null) {
+                    if (message.content.isNotBlank()) {
                         Spacer(modifier = Modifier.height(10.dp))
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = BrandSurfaceHigh,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder.copy(alpha = 0.6f))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            if (message.metrics != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = BrandSurfaceHigh,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder.copy(alpha = 0.6f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Bolt,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(12.dp),
+                                            tint = BrandEmeraldLight
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "${message.metrics.formattedDuration} • ${message.metrics.tokenCount} tok • ${message.metrics.formattedSpeed}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 10.sp,
+                                            color = BrandOnBgMuted,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+                            } else {
+                                Spacer(modifier = Modifier.width(1.dp))
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = BrandSurfaceHigh,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder.copy(alpha = 0.6f)),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onCopyResponse(message.content) }
                             ) {
-                                Icon(
-                                    Icons.Default.Bolt,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(13.dp),
-                                    tint = BrandEmeraldLight
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                                Text(
-                                    text = "${message.metrics.formattedDuration} • ${message.metrics.tokenCount} tokens • ${message.metrics.formattedSpeed} • ${message.metrics.backend}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 11.sp,
-                                    color = BrandOnBgMuted,
-                                    fontWeight = FontWeight.Medium
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.ContentCopy,
+                                        contentDescription = "Copy Response",
+                                        modifier = Modifier.size(12.dp),
+                                        tint = BrandEmeraldLight
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Copy",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        color = BrandEmeraldLight,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
                         }
                     }
