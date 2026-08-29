@@ -490,6 +490,7 @@ fun ChatScreen(
                 .padding(horizontal = 14.dp),
             contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
             val nonBlankMessages = uiState.messages.filter { it.content.isNotBlank() || it.isUser }
 
             items(items = nonBlankMessages, key = { it.id }) { message ->
