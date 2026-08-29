@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -57,25 +58,46 @@ fun ChatScreen(
 
     val isImeVisible = WindowInsets.isImeVisible
 
-    // Auto-scroll when messages update or streaming content grows
-    val lastMessageContentLength = uiState.messages.lastOrNull()?.content?.length ?: 0
-    LaunchedEffect(uiState.messages.size, lastMessageContentLength, uiState.isGenerating) {
-        if (uiState.messages.isNotEmpty() && uiState.isGenerating) {
-            val targetIndex = (uiState.messages.size - 1).coerceAtLeast(0)
-            listState.scrollToItem(targetIndex)
+    // Track whether the user is at the bottom of the list
+    val isAtBottom by remember {
+        derivedStateOf {
+            val visibleItems = listState.layoutInfo.visibleItemsInfo
+            if (visibleItems.isEmpty()) return@derivedStateOf true
+            val lastVisibleIndex = visibleItems.last().index
+            val totalItems = listState.layoutInfo.totalItemsCount
+            lastVisibleIndex >= totalItems - 1
         }
     }
 
-    // Auto-scroll when new messages are added
+    var userScrolledUp by remember { mutableStateOf(false) }
+
+    // Detect user manual scroll interaction
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            userScrolledUp = !isAtBottom
+        }
+    }
+
+    // Auto-scroll when new messages are added or when user sends message
     LaunchedEffect(uiState.messages.size) {
+        userScrolledUp = false
         if (uiState.messages.isNotEmpty()) {
             listState.animateScrollToItem(uiState.messages.size - 1)
         }
     }
 
+    // Auto-scroll smoothly during live AI streaming responses (without forcing if user scrolled up)
+    val lastMessageContent = uiState.messages.lastOrNull()?.content ?: ""
+    LaunchedEffect(lastMessageContent, uiState.isGenerating) {
+        if (uiState.isGenerating && !userScrolledUp && !listState.isScrollInProgress) {
+            val targetIndex = (uiState.messages.size - 1).coerceAtLeast(0)
+            listState.scrollToItem(targetIndex)
+        }
+    }
+
     // Auto-scroll when IME keyboard opens
     LaunchedEffect(isImeVisible) {
-        if (uiState.messages.isNotEmpty()) {
+        if (!userScrolledUp && uiState.messages.isNotEmpty()) {
             listState.animateScrollToItem(uiState.messages.size - 1)
         }
     }
@@ -461,6 +483,10 @@ fun ChatScreen(
             }
         }
     ) { padding ->
+        // Analyze current generation & thinking state cleanly
+        val lastMessage = uiState.messages.lastOrNull()
+        val isAiCurrentlyThinking = uiState.isGenerating && lastMessage != null && !lastMessage.isUser && isMessageInThinkingPhase(lastMessage.content)
+
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -470,15 +496,28 @@ fun ChatScreen(
             contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            val nonBlankMessages = uiState.messages.filter { it.content.isNotBlank() || it.isUser }
+            // Render all historical & ready messages
+            val renderableMessages = uiState.messages.filter { message ->
+                if (message.isUser) {
+                    true
+                } else {
+                    // For AI messages: only render if there is actual clean answer content ready
+                    val cleanAnswer = extractCleanAnswer(message.content)
+                    cleanAnswer.isNotBlank()
+                }
+            }
 
-            items(items = nonBlankMessages, key = { it.id }) { message ->
+            items(items = renderableMessages, key = { it.id }) { message ->
                 val isStreaming = uiState.isGenerating &&
                         !message.isUser &&
-                        message.id == uiState.messages.lastOrNull()?.id
+                        message.id == uiState.messages.lastOrNull()?.id &&
+                        !isAiCurrentlyThinking
+
+                val displayContent = if (message.isUser) message.content else extractCleanAnswer(message.content)
 
                 MessageBubble(
                     message = message,
+                    displayContent = displayContent,
                     isStreaming = isStreaming,
                     onCopyCode = { code ->
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
@@ -495,9 +534,9 @@ fun ChatScreen(
                 )
             }
 
-            // Show clean minimal thinking indicator while AI is preparing first response
-            if (uiState.isGenerating && uiState.messages.lastOrNull()?.content.isNullOrBlank()) {
-                item(key = "generating_indicator") {
+            // Show clean minimal thinking indicator ONLY while AI is actively thinking/processing
+            if (isAiCurrentlyThinking) {
+                item(key = "active_ai_thinking") {
                     AiThinkingIndicator()
                 }
             }
@@ -511,9 +550,44 @@ fun ChatScreen(
     }
 }
 
+/**
+ * Checks whether an in-progress AI message is still in the internal thinking/reasoning phase.
+ */
+private fun isMessageInThinkingPhase(rawContent: String): Boolean {
+    if (rawContent.isBlank()) return true
+    val hasOpenThink = rawContent.contains("<think>")
+    val hasCloseThink = rawContent.contains("</think>")
+
+    if (hasOpenThink && !hasCloseThink) {
+        // Still generating internal reasoning chain
+        return true
+    }
+    if (hasOpenThink && hasCloseThink) {
+        // Closed think, but answer text after </think> hasn't started streaming yet
+        val answer = rawContent.substringAfter("</think>").trimStart('\n', ' ')
+        return answer.isBlank()
+    }
+    return false
+}
+
+/**
+ * Extracts the clean answer content for user display, removing internal thought tags.
+ */
+private fun extractCleanAnswer(rawContent: String): String {
+    val hasOpenThink = rawContent.contains("<think>")
+    val hasCloseThink = rawContent.contains("</think>")
+
+    return when {
+        hasOpenThink && hasCloseThink -> rawContent.substringAfter("</think>").trimStart('\n', ' ')
+        hasOpenThink && !hasCloseThink -> "" // Still thinking -> no answer content yet
+        else -> rawContent
+    }
+}
+
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
+    displayContent: String,
     isStreaming: Boolean = false,
     onCopyCode: (String) -> Unit,
     onCopyResponse: (String) -> Unit
@@ -557,13 +631,13 @@ private fun MessageBubble(
             Column(modifier = Modifier.padding(12.dp)) {
                 if (isUser) {
                     Text(
-                        text = message.content,
+                        text = displayContent,
                         style = MaterialTheme.typography.bodyMedium,
                         color = BrandOnBg
                     )
                 } else {
                     MarkdownContent(
-                        content = message.content,
+                        content = displayContent,
                         textColor = BrandOnBg,
                         onCopyCode = onCopyCode
                     )
@@ -593,7 +667,7 @@ private fun MessageBubble(
                         }
                     }
 
-                    if (message.content.isNotBlank()) {
+                    if (displayContent.isNotBlank() && !isStreaming) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -607,7 +681,7 @@ private fun MessageBubble(
                                     border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder.copy(alpha = 0.6f))
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
@@ -636,7 +710,7 @@ private fun MessageBubble(
                                 border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmerald.copy(alpha = 0.4f)),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .clickable { onCopyResponse(message.content) }
+                                    .clickable { onCopyResponse(displayContent) }
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
@@ -645,16 +719,16 @@ private fun MessageBubble(
                                     Icon(
                                         Icons.Default.ContentCopy,
                                         contentDescription = "Copy Response",
-                                        modifier = Modifier.size(13.dp),
+                                        modifier = Modifier.size(12.dp),
                                         tint = BrandEmeraldLight
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "Copy",
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 11.sp,
+                                        fontSize = 10.sp,
                                         color = BrandEmeraldLight,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.SemiBold
                                     )
                                 }
                             }

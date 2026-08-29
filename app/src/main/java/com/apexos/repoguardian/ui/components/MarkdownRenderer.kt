@@ -32,7 +32,7 @@ import com.apexos.repoguardian.ui.theme.CodeBackground
 import com.apexos.repoguardian.ui.theme.StatusInfo
 
 sealed class MarkdownBlock {
-    data class Think(val thought: String, val isStreaming: Boolean = false) : MarkdownBlock()
+    data class Think(val thought: String) : MarkdownBlock()
     data class Header(val level: Int, val text: String) : MarkdownBlock()
     data class Paragraph(val text: String) : MarkdownBlock()
     data class Bullet(val text: String) : MarkdownBlock()
@@ -58,21 +58,22 @@ fun MarkdownContent(
         blocks.forEach { block ->
             when (block) {
                 is MarkdownBlock.Think -> {
-                    var isExpanded by remember { mutableStateOf(true) }
+                    var isExpanded by remember { mutableStateOf(false) }
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(10.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                         )
                     ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
+                        Column(modifier = Modifier.padding(8.dp)) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { isExpanded = !isExpanded },
+                                    .clickable { isExpanded = !isExpanded }
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -81,29 +82,21 @@ fun MarkdownContent(
                                         Icons.Default.Psychology,
                                         contentDescription = "Thinking",
                                         tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(16.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = if (block.isStreaming) "Thinking..." else "Thought Process",
-                                        style = MaterialTheme.typography.labelMedium,
+                                        text = "Reasoning Process",
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary
                                     )
-                                    if (block.isStreaming) {
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(12.dp),
-                                            strokeWidth = 1.5.dp,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
                                 }
                                 Icon(
                                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                                     contentDescription = if (isExpanded) "Collapse" else "Expand",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
 
@@ -116,8 +109,8 @@ fun MarkdownContent(
                                     text = block.thought,
                                     style = MaterialTheme.typography.bodySmall.copy(
                                         fontStyle = FontStyle.Italic,
-                                        fontSize = 12.sp,
-                                        lineHeight = 18.sp
+                                        fontSize = 11.5.sp,
+                                        lineHeight = 17.sp
                                     ),
                                     color = textColor.copy(alpha = 0.85f)
                                 )
@@ -434,15 +427,12 @@ fun parseMarkdown(raw: String): List<MarkdownBlock> {
     if (thinkMatch != null) {
         val thought = thinkMatch.groupValues[1].trim()
         if (thought.isNotBlank()) {
-            blocks.add(MarkdownBlock.Think(thought, isStreaming = false))
+            blocks.add(MarkdownBlock.Think(thought))
         }
         processedRaw = raw.replace(thinkMatch.value, "").trim()
     } else if (raw.contains("<think>")) {
+        // While inside <think> and not yet closed, do not render partial thinking block in markdown
         val startIdx = raw.indexOf("<think>")
-        val thought = raw.substring(startIdx + 7).trim()
-        if (thought.isNotBlank()) {
-            blocks.add(MarkdownBlock.Think(thought, isStreaming = true))
-        }
         processedRaw = raw.substring(0, startIdx).trim()
     }
 
