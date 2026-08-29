@@ -398,26 +398,38 @@ fun ChatScreen(
 
                             IconButton(
                                 onClick = {
-                                    if (inputText.isNotBlank()) {
+                                    if (uiState.isGenerating) {
+                                        viewModel.stopGeneration()
+                                    } else if (inputText.isNotBlank()) {
                                         viewModel.sendMessage(inputText)
                                         inputText = ""
                                     }
                                 },
-                                enabled = inputText.isNotBlank() && !uiState.isGenerating,
+                                enabled = uiState.isGenerating || inputText.isNotBlank(),
                                 modifier = Modifier
                                     .size(46.dp)
                                     .clip(CircleShape)
                                     .background(
-                                        if (inputText.isNotBlank() && !uiState.isGenerating) BrandEmerald
+                                        if (uiState.isGenerating) StatusFail
+                                        else if (inputText.isNotBlank()) BrandEmerald
                                         else BrandSurfaceElev
                                     )
                             ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.Send,
-                                    contentDescription = "Send",
-                                    tint = if (inputText.isNotBlank() && !uiState.isGenerating) OnEmerald else BrandOnBgSubtle,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                if (uiState.isGenerating) {
+                                    Icon(
+                                        Icons.Default.Stop,
+                                        contentDescription = "Stop Generation",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Send,
+                                        contentDescription = "Send",
+                                        tint = if (inputText.isNotBlank()) OnEmerald else BrandOnBgSubtle,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -507,9 +519,9 @@ private fun MessageBubble(
             ),
             color = if (isUser) BrandSurfaceElev else BrandSurface,
             border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder),
-            modifier = Modifier.widthIn(max = 330.dp)
+            modifier = Modifier.widthIn(max = 340.dp)
         ) {
-            Box(modifier = Modifier.padding(12.dp)) {
+            Column(modifier = Modifier.padding(12.dp)) {
                 if (isUser) {
                     Text(
                         text = message.content,
@@ -522,6 +534,35 @@ private fun MessageBubble(
                         textColor = BrandOnBg,
                         onCopyCode = onCopyCode
                     )
+
+                    if (message.metrics != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = BrandSurfaceHigh,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder.copy(alpha = 0.6f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp),
+                                    tint = BrandEmeraldLight
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "${message.metrics.formattedDuration} • ${message.metrics.tokenCount} tokens • ${message.metrics.formattedSpeed} • ${message.metrics.backend}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 11.sp,
+                                    color = BrandOnBgMuted,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

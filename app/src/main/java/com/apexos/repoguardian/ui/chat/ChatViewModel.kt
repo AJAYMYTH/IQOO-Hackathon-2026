@@ -100,6 +100,8 @@ class ChatViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState
 
+    private var currentGenerationJob: kotlinx.coroutines.Job? = null
+
     val quickPrompts = listOf(
         QuickPrompt(
             title = "Explain Repo",
@@ -348,7 +350,7 @@ Live repository data loaded from GitHub REST API ($fileCountText, $commitCountTe
 
         val userMessage = ChatMessage(content = userText.trim(), isUser = true)
 
-        viewModelScope.launch {
+        currentGenerationJob = viewModelScope.launch {
             val downloaded = modelDownloadManager.getDownloadedModels()
             var modelPath = preferencesManager.getModelPath()
             val localServerUrl = preferencesManager.getLocalServerUrl().trim()
@@ -397,6 +399,16 @@ Live repository data loaded from GitHub REST API ($fileCountText, $commitCountTe
                 isGenerating = true,
                 error = null
             )
+
+            val startTime = System.currentTimeMillis()
+            var tokensCount = 0
+            val backendPref = preferencesManager.getBackend().lowercase()
+            val activeBackend = when {
+                localServerUrl.isNotBlank() -> "Local Server ($localServerUrl)"
+                backendPref == "npu" -> "Snapdragon NPU (Hexagon)"
+                backendPref == "gpu" -> "Adreno GPU (Vulkan)"
+                else -> "CPU (ARM NEON)"
+            }
 
             try {
                 val ctx = _uiState.value.liveRepoContext
@@ -451,16 +463,7 @@ $dynamicGitHubData
 
                 AppLogger.d(TAG, "Passing system context to LLM (${systemPrompt.length} chars)")
 
-                val startTime = System.currentTimeMillis()
-                var tokensCount = 0
                 val accumulatedResponse = StringBuilder()
-                val backendPref = preferencesManager.getBackend().lowercase()
-                val activeBackend = when {
-                    localServerUrl.isNotBlank() -> "Local Server ($localServerUrl)"
-                    backendPref == "npu" -> "Snapdragon NPU (Hexagon)"
-                    backendPref == "gpu" -> "Adreno GPU (Vulkan)"
-                    else -> "CPU (ARM NEON)"
-                }
 
                 llamaService.chatStream(
                     userMessage = userText.trim(),
@@ -502,6 +505,28 @@ $dynamicGitHubData
                     isGenerating = false
                 )
                 AppLogger.i(TAG, "Chat generation finished ($tokensCount tokens, ${elapsedMs}ms, ${String.format("%.1f", tps)} tok/s, backend: $activeBackend)")
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                AppLogger.i(TAG, "Chat generation stopped by user request")
+                val currentText = _uiState.value.messages.find { it.id == aiMessageId }?.content ?: ""
+                val elapsedMs = System.currentTimeMillis() - startTime
+                val tps = if (elapsedMs > 0) (tokensCount.toDouble() / (elapsedMs / 1000.0)) else 0.0
+                val metrics = InferenceMetrics(
+                    totalTimeMs = elapsedMs,
+                    tokenCount = tokensCount,
+                    tokensPerSecond = tps,
+                    backend = "$activeBackend (Stopped)"
+                )
+                val updatedMessages = _uiState.value.messages.map { msg ->
+                    if (msg.id == aiMessageId) {
+                        msg.copy(content = currentText, metrics = metrics)
+                    } else {
+                        msg
+                    }
+                }
+                _uiState.value = _uiState.value.copy(
+                    messages = updatedMessages,
+                    isGenerating = false
+                )
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Inference execution error in ChatViewModel", e)
                 val errorMsg = "Inference error: ${e.localizedMessage ?: e.message}"
@@ -522,6 +547,14 @@ $dynamicGitHubData
                     error = errorMsg
                 )
             }
+        }
+    }
+
+    fun stopGeneration() {
+        if (_uiState.value.isGenerating) {
+            AppLogger.i(TAG, "User pressed stop button to cancel AI generation")
+            currentGenerationJob?.cancel()
+            _uiState.value = _uiState.value.copy(isGenerating = false)
         }
     }
 
