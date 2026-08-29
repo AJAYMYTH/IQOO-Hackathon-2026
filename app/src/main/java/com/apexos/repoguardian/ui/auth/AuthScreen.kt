@@ -161,16 +161,33 @@ fun AuthScreen(
                     WaitingState(
                         userCode = state.response.userCode,
                         verificationUri = state.response.verificationUri,
+                        transitionCountdown = state.transitionCountdown,
                         codeCopied = codeCopied,
                         onCopyCode = { copyCodeToClipboard(state.response.userCode) },
+                        onProceedEarly = { viewModel.proceedToVerificationEarly() },
                         context = context
                     )
                 }
 
-                is AuthState.Polling -> LoadingState("Verifying on GitHub...")
+                is AuthState.Verifying -> {
+                    VerifyingState(
+                        userCode = state.response.userCode,
+                        verificationUri = state.response.verificationUri,
+                        remainingSeconds = state.remainingSeconds,
+                        onGenerateNewCode = { viewModel.startAuth() },
+                        context = context
+                    )
+                }
 
                 is AuthState.Success -> {
                     SuccessState()
+                }
+
+                is AuthState.Timeout -> {
+                    TimeoutState(
+                        message = state.message,
+                        onGenerateNewCode = { viewModel.startAuth() }
+                    )
                 }
 
                 is AuthState.Error -> {
@@ -199,6 +216,170 @@ private fun LoadingState(message: String) {
         )
         Spacer(Modifier.height(16.dp))
         Text(message, style = MaterialTheme.typography.bodyMedium, color = BrandOnBgMuted)
+    }
+}
+
+@Composable
+private fun VerifyingState(
+    userCode: String,
+    verificationUri: String,
+    remainingSeconds: Int,
+    onGenerateNewCode: () -> Unit,
+    context: Context
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 36.dp)
+    ) {
+        CircularProgressIndicator(
+            color = BrandEmerald,
+            strokeWidth = 3.dp,
+            modifier = Modifier.size(48.dp)
+        )
+
+        Spacer(Modifier.height(20.dp))
+
+        Text(
+            text = "Verifying on GitHub...",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = BrandOnBg
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = BrandSurfaceElev,
+            border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Schedule,
+                    contentDescription = null,
+                    tint = BrandEmeraldLight,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "Verification expires in ${remainingSeconds}s",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = BrandEmeraldLight
+                )
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        Text(
+            text = "Approve code $userCode in your browser to complete authorization.",
+            style = MaterialTheme.typography.bodySmall,
+            color = BrandOnBgMuted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 24.dp)
+        )
+
+        Spacer(Modifier.height(24.dp))
+
+        OutlinedButton(
+            onClick = {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(verificationUri)))
+            },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+        ) {
+            Icon(
+                Icons.Filled.OpenInBrowser,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = BrandOnBg
+            )
+            Spacer(Modifier.width(8.dp))
+            Text("Open GitHub Login", color = BrandOnBg, fontWeight = FontWeight.Medium)
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        TextButton(onClick = onGenerateNewCode) {
+            Text("Cancel & Generate New Code", color = BrandOnBgMuted, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun TimeoutState(
+    message: String,
+    onGenerateNewCode: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 32.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(StatusFail.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Filled.Schedule,
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint = StatusFail
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        Text(
+            text = "Authorization Expired",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = BrandOnBg
+        )
+
+        Spacer(Modifier.height(6.dp))
+
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = StatusFail,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            text = "This authorization code has expired. Generate a new code to continue.",
+            style = MaterialTheme.typography.bodySmall,
+            color = BrandOnBgMuted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+
+        Spacer(Modifier.height(28.dp))
+
+        Button(
+            onClick = onGenerateNewCode,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+        ) {
+            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp), tint = OnEmerald)
+            Spacer(Modifier.width(8.dp))
+            Text("Generate New Code", color = OnEmerald, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
@@ -283,8 +464,10 @@ private fun ErrorState(message: String, onRetry: () -> Unit) {
 private fun WaitingState(
     userCode: String,
     verificationUri: String,
+    transitionCountdown: Int,
     codeCopied: Boolean,
     onCopyCode: () -> Unit,
+    onProceedEarly: () -> Unit,
     context: Context
 ) {
     Column(
@@ -355,6 +538,34 @@ private fun WaitingState(
                         color = if (codeCopied) StatusPass else BrandOnBgMuted
                     )
                 }
+
+                Spacer(Modifier.height(10.dp))
+
+                // Expiry / transition countdown badge
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = BrandEmeraldMuted,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmeraldLight.copy(alpha = 0.4f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Schedule,
+                            contentDescription = null,
+                            tint = BrandEmeraldLight,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "Code expires in ${transitionCountdown}s",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = BrandEmeraldLight
+                        )
+                    }
+                }
             }
         }
 
@@ -383,6 +594,7 @@ private fun WaitingState(
 
         OutlinedButton(
             onClick = {
+                onProceedEarly()
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(verificationUri)))
             },
             modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -448,7 +660,7 @@ private fun WaitingState(
             }
         }
 
-        // ── Polling indicator ─────────────────────────────────────────────────
+        // ── Transition countdown indicator ────────────────────────────────────
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
@@ -457,11 +669,11 @@ private fun WaitingState(
             CircularProgressIndicator(
                 modifier = Modifier.size(14.dp),
                 strokeWidth = 1.8.dp,
-                color = BrandOnBgMuted
+                color = BrandEmeraldLight
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                "Waiting for your GitHub authorization...",
+                "Redirecting to verification in ${transitionCountdown}s...",
                 style = MaterialTheme.typography.labelSmall,
                 color = BrandOnBgMuted
             )

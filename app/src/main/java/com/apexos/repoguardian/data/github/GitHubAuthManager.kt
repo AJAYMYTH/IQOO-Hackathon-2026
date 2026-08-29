@@ -13,9 +13,19 @@ import javax.inject.Singleton
 
 sealed class AuthState {
     data object Idle : AuthState()
-    data class WaitingForUser(val response: DeviceCodeResponse) : AuthState()
-    data object Polling : AuthState()
+    data class WaitingForUser(
+        val response: DeviceCodeResponse,
+        val transitionCountdown: Int = 5
+    ) : AuthState()
+    data class Verifying(
+        val response: DeviceCodeResponse,
+        val remainingSeconds: Int = 30
+    ) : AuthState()
     data class Success(val token: String) : AuthState()
+    data class Timeout(
+        val message: String = "Verification timed out. Please try again.",
+        val expiredCode: String? = null
+    ) : AuthState()
     data class Error(val message: String) : AuthState()
 }
 
@@ -32,68 +42,48 @@ class GitHubAuthManager @Inject constructor(
         return preferencesManager.getGitHubToken()
     }
 
-    fun startDeviceFlow(): Flow<AuthState> = flow {
-        emit(AuthState.Idle)
-        try {
-            val clientId = BuildConfig.GITHUB_CLIENT_ID
-            if (clientId.isBlank()) {
-                emit(AuthState.Error("GitHub Client ID not configured. Add GITHUB_CLIENT_ID to local.properties"))
-                return@flow
-            }
+    suspend fun requestDeviceCode(): DeviceCodeResponse {
+        val clientId = BuildConfig.GITHUB_CLIENT_ID
+        if (clientId.isBlank()) {
+            throw IllegalStateException("GitHub Client ID not configured. Add GITHUB_CLIENT_ID to local.properties")
+        }
+        return authApi.requestDeviceCode(
+            DeviceCodeRequest(clientId = clientId)
+        )
+    }
 
-            val deviceCodeResponse = authApi.requestDeviceCode(
-                DeviceCodeRequest(clientId = clientId)
+    suspend fun pollToken(deviceCode: String): String? {
+        val clientId = BuildConfig.GITHUB_CLIENT_ID
+        val tokenResponse = authApi.pollAccessToken(
+            AccessTokenRequest(
+                clientId = clientId,
+                deviceCode = deviceCode
             )
-            emit(AuthState.WaitingForUser(deviceCodeResponse))
+        )
 
-            // Poll for token
-            val intervalMs = (deviceCodeResponse.interval * 1000).toLong()
-            val expiresAt = System.currentTimeMillis() + (deviceCodeResponse.expiresIn * 1000L)
-
-            while (System.currentTimeMillis() < expiresAt) {
-                delay(intervalMs)
-                emit(AuthState.Polling)
-
-                try {
-                    val tokenResponse = authApi.pollAccessToken(
-                        AccessTokenRequest(
-                            clientId = clientId,
-                            deviceCode = deviceCodeResponse.deviceCode
-                        )
-                    )
-
-                    when {
-                        tokenResponse.accessToken != null -> {
-                            preferencesManager.saveGitHubToken(tokenResponse.accessToken)
-                            emit(AuthState.Success(tokenResponse.accessToken))
-                            return@flow
-                        }
-                        tokenResponse.error == "authorization_pending" -> {
-                            // Continue polling
-                        }
-                        tokenResponse.error == "slow_down" -> {
-                            delay(5000) // Extra delay
-                        }
-                        tokenResponse.error == "expired_token" -> {
-                            emit(AuthState.Error("Device code expired. Please try again."))
-                            return@flow
-                        }
-                        tokenResponse.error == "access_denied" -> {
-                            emit(AuthState.Error("Access denied by user."))
-                            return@flow
-                        }
-                        else -> {
-                            emit(AuthState.Error(tokenResponse.errorDescription ?: "Unknown error"))
-                            return@flow
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Network error during polling, continue trying
-                }
+        when {
+            tokenResponse.accessToken != null -> {
+                preferencesManager.saveGitHubToken(tokenResponse.accessToken)
+                return tokenResponse.accessToken
             }
-            emit(AuthState.Error("Device code expired. Please try again."))
-        } catch (e: Exception) {
-            emit(AuthState.Error("Failed to start authentication: ${e.message}"))
+            tokenResponse.error == "authorization_pending" -> {
+                return null
+            }
+            tokenResponse.error == "slow_down" -> {
+                return null
+            }
+            tokenResponse.error == "expired_token" -> {
+                throw IllegalStateException("Device code expired. Please try again.")
+            }
+            tokenResponse.error == "access_denied" -> {
+                throw IllegalStateException("Access denied by user.")
+            }
+            else -> {
+                if (!tokenResponse.error.isNullOrBlank()) {
+                    throw IllegalStateException(tokenResponse.errorDescription ?: tokenResponse.error)
+                }
+                return null
+            }
         }
     }
 
