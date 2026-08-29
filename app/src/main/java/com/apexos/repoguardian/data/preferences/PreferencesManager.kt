@@ -26,6 +26,28 @@ class PreferencesManager @Inject constructor(
         private val KEY_CUSTOM_RULES = stringPreferencesKey("custom_rules")
         private val KEY_GUIDE_DISMISSED = booleanPreferencesKey("guide_dismissed")
         private val KEY_LOCAL_SERVER_URL = stringPreferencesKey("local_server_url")
+        private val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+    }
+
+    // === Onboarding ===
+    suspend fun setOnboardingCompleted(completed: Boolean = true) {
+        context.dataStore.edit { it[KEY_ONBOARDING_COMPLETED] = completed }
+    }
+
+    suspend fun setOnboardingSeen(seen: Boolean = true) {
+        setOnboardingCompleted(seen)
+    }
+
+    suspend fun isOnboardingCompleted(): Boolean {
+        return context.dataStore.data.first()[KEY_ONBOARDING_COMPLETED] ?: false
+    }
+
+    suspend fun hasSeenOnboarding(): Boolean {
+        return isOnboardingCompleted()
+    }
+
+    fun observeOnboardingCompleted(): Flow<Boolean> {
+        return context.dataStore.data.map { it[KEY_ONBOARDING_COMPLETED] ?: false }
     }
 
     // === GitHub Token ===

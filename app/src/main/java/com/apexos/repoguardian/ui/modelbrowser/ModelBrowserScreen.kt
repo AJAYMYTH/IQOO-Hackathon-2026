@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,15 +15,18 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -30,9 +34,10 @@ import com.apexos.repoguardian.data.huggingface.DownloadProgress
 import com.apexos.repoguardian.data.huggingface.FeaturedModel
 import com.apexos.repoguardian.data.huggingface.HfModelFile
 import com.apexos.repoguardian.data.huggingface.HfModelSearchResult
-import com.apexos.repoguardian.ui.theme.SeverityWarning
-import com.apexos.repoguardian.ui.theme.StatusInfo
-import com.apexos.repoguardian.ui.theme.StatusPass
+import com.apexos.repoguardian.navigation.Routes
+import com.apexos.repoguardian.ui.components.AppBottomBar
+import com.apexos.repoguardian.ui.components.NonTechGuideDialog
+import com.apexos.repoguardian.ui.theme.*
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,7 +49,6 @@ fun ModelBrowserScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
-    // Request Notification Permission on Android 13+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { }
@@ -58,29 +62,28 @@ fun ModelBrowserScreen(
         }
     }
 
-    // Handle Back Navigation when downloading
     BackHandler(enabled = uiState.downloadingFilename != null) {
         viewModel.setShowExitDialog(true)
     }
 
-    // Exit & Background Download Permission Dialog
     if (uiState.showExitDialog) {
         val progressPercent = ((uiState.downloadProgress?.progressPercent ?: 0f) * 100).toInt()
         AlertDialog(
             onDismissRequest = { viewModel.setShowExitDialog(false) },
-            icon = { Icon(Icons.Default.CloudDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-            title = { Text("Download in Progress") },
+            icon = { Icon(Icons.Default.CloudDownload, contentDescription = null, tint = BrandEmeraldLight) },
+            title = { Text("Download in Progress", color = BrandOnBg) },
             text = {
-                Text("Downloading ${uiState.downloadingFilename ?: "model"} (${progressPercent}%).\n\nWould you like the download to continue safely in the background? You will receive a progress notification and the model will auto-load when done.")
+                Text("Downloading ${uiState.downloadingFilename ?: "model"} (${progressPercent}%).\n\nWould you like the download to continue safely in the background? You will receive a notification and the model will auto-load when done.", color = BrandOnBgMuted)
             },
             confirmButton = {
                 Button(
                     onClick = {
                         viewModel.setShowExitDialog(false)
                         navController.popBackStack()
-                    }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
                 ) {
-                    Text("Keep in Background")
+                    Text("Keep in Background", color = OnEmerald)
                 }
             },
             dismissButton = {
@@ -88,43 +91,67 @@ fun ModelBrowserScreen(
                     onClick = {
                         viewModel.cancelDownload()
                         navController.popBackStack()
-                    }
+                    },
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
                 ) {
-                    Text("Cancel Download")
+                    Text("Cancel Download", color = StatusFail)
                 }
-            }
+            },
+            containerColor = BrandSurfaceHigh
         )
     }
 
     var showGuide by remember { mutableStateOf(false) }
 
     Scaffold(
+        containerColor = BrandBackground,
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        if (uiState.selectedModel != null) "Select Quantization"
-                        else "AI Models & GGUF Manager"
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        if (uiState.downloadingFilename != null) {
-                            viewModel.setShowExitDialog(true)
-                        } else if (uiState.selectedModel != null) {
-                            viewModel.clearSelection()
-                        } else {
-                            navController.popBackStack()
+            Surface(
+                color = GlassBackground,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    TopAppBar(
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            titleContentColor = BrandOnBg,
+                            actionIconContentColor = BrandOnBgMuted
+                        ),
+                        title = {
+                            Text(
+                                text = if (uiState.selectedModel != null) "Select Quantization"
+                                else "Model Manager",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = {
+                                if (uiState.downloadingFilename != null) {
+                                    viewModel.setShowExitDialog(true)
+                                } else if (uiState.selectedModel != null) {
+                                    viewModel.clearSelection()
+                                } else {
+                                    navController.popBackStack()
+                                }
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = { showGuide = true }) {
+                                Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = "Help Guide")
+                            }
                         }
-                    }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showGuide = true }) {
-                        Icon(Icons.Default.HelpOutline, contentDescription = "Quick Guide")
-                    }
+                    )
+                    HorizontalDivider(color = BrandBorder, thickness = 1.dp)
                 }
+            }
+        },
+        bottomBar = {
+            AppBottomBar(
+                currentRoute = Routes.MODEL_BROWSER,
+                navController = navController
             )
         }
     ) { padding ->
@@ -132,15 +159,17 @@ fun ModelBrowserScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .background(BrandBackground)
         ) {
-            // Success Notification
+            // Success Notification Card
             uiState.successMessage?.let { msg ->
-                Card(
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 6.dp),
                     shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = StatusPass.copy(alpha = 0.15f))
+                    color = StatusPass.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StatusPass.copy(alpha = 0.3f))
                 ) {
                     Row(
                         modifier = Modifier
@@ -148,7 +177,7 @@ fun ModelBrowserScreen(
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusPass, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusPass, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = msg, style = MaterialTheme.typography.bodySmall, color = StatusPass, modifier = Modifier.weight(1f))
                         IconButton(onClick = { viewModel.clearMessages() }, modifier = Modifier.size(24.dp)) {
@@ -158,14 +187,15 @@ fun ModelBrowserScreen(
                 }
             }
 
-            // Error Notification
+            // Error Notification Card
             uiState.error?.let { err ->
-                Card(
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 6.dp),
                     shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    color = StatusFail.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StatusFail.copy(alpha = 0.3f))
                 ) {
                     Row(
                         modifier = Modifier
@@ -173,37 +203,62 @@ fun ModelBrowserScreen(
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = StatusFail, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = err, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.weight(1f))
+                        Text(text = err, style = MaterialTheme.typography.bodySmall, color = StatusFail, modifier = Modifier.weight(1f))
                         IconButton(onClick = { viewModel.clearMessages() }, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = StatusFail, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
             }
 
             if (uiState.selectedModel == null) {
-                // Tab Selection Row
-                TabRow(
-                    selectedTabIndex = uiState.selectedTab,
+                // Tab Selection Row with Pure Dark & Emerald highlight
+                Surface(
+                    color = BrandSurface,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Tab(
-                        selected = uiState.selectedTab == 0,
-                        onClick = { viewModel.selectTab(0) },
-                        text = { Text("Featured") }
-                    )
-                    Tab(
-                        selected = uiState.selectedTab == 1,
-                        onClick = { viewModel.selectTab(1) },
-                        text = { Text("Search HF") }
-                    )
-                    Tab(
-                        selected = uiState.selectedTab == 2,
-                        onClick = { viewModel.selectTab(2) },
-                        text = { Text("Saved (${uiState.downloadedModels.size})") }
-                    )
+                    TabRow(
+                        selectedTabIndex = uiState.selectedTab,
+                        containerColor = Color.Transparent,
+                        contentColor = BrandEmeraldLight,
+                        divider = { HorizontalDivider(color = BrandBorder) }
+                    ) {
+                        Tab(
+                            selected = uiState.selectedTab == 0,
+                            onClick = { viewModel.selectTab(0) },
+                            text = {
+                                Text(
+                                    "Featured",
+                                    color = if (uiState.selectedTab == 0) BrandEmeraldLight else BrandOnBgMuted,
+                                    fontWeight = if (uiState.selectedTab == 0) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        )
+                        Tab(
+                            selected = uiState.selectedTab == 1,
+                            onClick = { viewModel.selectTab(1) },
+                            text = {
+                                Text(
+                                    "Search HF",
+                                    color = if (uiState.selectedTab == 1) BrandEmeraldLight else BrandOnBgMuted,
+                                    fontWeight = if (uiState.selectedTab == 1) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        )
+                        Tab(
+                            selected = uiState.selectedTab == 2,
+                            onClick = { viewModel.selectTab(2) },
+                            text = {
+                                Text(
+                                    "Downloaded (${uiState.downloadedModels.size})",
+                                    color = if (uiState.selectedTab == 2) BrandEmeraldLight else BrandOnBgMuted,
+                                    fontWeight = if (uiState.selectedTab == 2) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        )
+                    }
                 }
 
                 when (uiState.selectedTab) {
@@ -212,7 +267,6 @@ fun ModelBrowserScreen(
                     2 -> DownloadedModelsTab(uiState = uiState, viewModel = viewModel)
                 }
             } else {
-                // File Explorer View for selected HuggingFace repository
                 val selected = uiState.selectedModel!!
                 ModelFilesView(selected = selected, uiState = uiState, viewModel = viewModel)
             }
@@ -220,7 +274,7 @@ fun ModelBrowserScreen(
     }
 
     if (showGuide) {
-        com.apexos.repoguardian.ui.components.NonTechGuideDialog(
+        NonTechGuideDialog(
             onDismiss = { showGuide = false }
         )
     }
@@ -239,18 +293,19 @@ private fun FeaturedModelsTab(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = StatusInfo.copy(alpha = 0.1f)
+                color = BrandSurfaceHigh,
+                border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
             ) {
                 Row(
                     modifier = Modifier.padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Bolt, contentDescription = null, tint = StatusInfo, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Bolt, contentDescription = null, tint = BrandEmeraldLight, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Curated on-device models with background download support and automatic activation.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = StatusInfo
+                        color = BrandOnBgMuted
                     )
                 }
             }
@@ -289,12 +344,13 @@ private fun FeaturedModelCard(
     onActivate: () -> Unit,
     onCancel: () -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-            else MaterialTheme.colorScheme.surfaceVariant
+        color = if (isActive) BrandSurfaceElev else BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isActive) BrandEmerald.copy(alpha = 0.5f) else BrandBorder
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -307,59 +363,60 @@ private fun FeaturedModelCard(
                     Text(
                         text = model.name,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = BrandOnBg
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = model.description,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        color = BrandOnBgMuted
                     )
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                    ) {
-                        Text(
-                            text = model.quant,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = BrandEmeraldMuted
+                ) {
+                    Text(
+                        text = model.quant,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandEmeraldLight,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
                 }
+            }
 
-                Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Surface(
                 shape = RoundedCornerShape(6.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                color = BrandSurfaceHigh
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         Icons.Default.Psychology,
                         contentDescription = null,
                         modifier = Modifier.size(12.dp),
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        tint = BrandEmeraldLight
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = model.categoryBadge,
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                        fontWeight = FontWeight.Medium,
+                        color = BrandOnBg
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Specs Row
             Row(
@@ -368,15 +425,15 @@ private fun FeaturedModelCard(
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(14.dp), tint = BrandOnBgSubtle)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = model.sizeFormatted, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                    Text(text = model.sizeFormatted, style = MaterialTheme.typography.bodySmall, color = BrandOnBg, fontWeight = FontWeight.Medium)
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Psychology, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(14.dp), tint = BrandOnBgSubtle)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = model.recommendedFor, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(text = model.recommendedFor, style = MaterialTheme.typography.bodySmall, color = BrandOnBgMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
 
@@ -395,42 +452,45 @@ private fun FeaturedModelCard(
                         isActive -> {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = StatusPass.copy(alpha = 0.15f)
+                                color = StatusPass.copy(alpha = 0.15f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, StatusPass.copy(alpha = 0.3f))
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusPass, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusPass, modifier = Modifier.size(15.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Active & Loaded", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = StatusPass)
                                 }
                             }
                         }
                         isDownloaded -> {
-                            FilledTonalButton(
+                            Button(
                                 onClick = onActivate,
                                 shape = RoundedCornerShape(8.dp),
-                                enabled = !isLoadingModel
+                                enabled = !isLoadingModel,
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandSurfaceElev)
                             ) {
                                 if (isLoadingModel) {
-                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = BrandEmerald)
                                     Spacer(modifier = Modifier.width(6.dp))
                                 } else {
-                                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp), tint = BrandEmeraldLight)
                                     Spacer(modifier = Modifier.width(6.dp))
                                 }
-                                Text("Load & Set Active")
+                                Text("Load & Set Active", color = BrandOnBg)
                             }
                         }
                         else -> {
                             Button(
                                 onClick = onDownload,
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
                             ) {
-                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = OnEmerald)
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Download (${model.sizeFormatted})")
+                                Text("Download (${model.sizeFormatted})", color = OnEmerald, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -442,9 +502,10 @@ private fun FeaturedModelCard(
 
 @Composable
 private fun DownloadProgressBar(progress: DownloadProgress, onCancel: () -> Unit) {
-    Card(
+    Surface(
         shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        color = BrandSurfaceHigh,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
@@ -453,19 +514,20 @@ private fun DownloadProgressBar(progress: DownloadProgress, onCancel: () -> Unit
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = BrandEmerald)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Downloading in Background...",
                         style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = BrandOnBg
                     )
                 }
                 Text(
                     text = "${(progress.progressPercent * 100).toInt()}%",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    color = BrandEmeraldLight
                 )
             }
 
@@ -476,6 +538,8 @@ private fun DownloadProgressBar(progress: DownloadProgress, onCancel: () -> Unit
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(6.dp),
+                color = BrandEmerald,
+                trackColor = BrandSurfaceElev
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -489,7 +553,7 @@ private fun DownloadProgressBar(progress: DownloadProgress, onCancel: () -> Unit
                     Text(
                         text = "${progress.downloadedFormatted} • ${progress.speedFormatted}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        color = BrandOnBgMuted
                     )
                     Text(
                         text = progress.etaFormatted,
@@ -500,7 +564,7 @@ private fun DownloadProgressBar(progress: DownloadProgress, onCancel: () -> Unit
                 }
 
                 TextButton(onClick = onCancel) {
-                    Text("Cancel", color = MaterialTheme.colorScheme.error)
+                    Text("Cancel", color = StatusFail)
                 }
             }
         }
@@ -515,7 +579,6 @@ private fun SearchModelsTab(
     val quickTags = listOf("coder gguf", "qwen2.5-coder", "deepseek-coder", "starcoder", "codellama")
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Search bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -526,34 +589,54 @@ private fun SearchModelsTab(
                 value = uiState.searchQuery,
                 onValueChange = { viewModel.updateSearchQuery(it) },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Search Hugging Face GGUF...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                placeholder = { Text("Search Hugging Face GGUF...", color = BrandOnBgSubtle) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = BrandOnBgMuted) },
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = BrandSurface,
+                    unfocusedContainerColor = BrandSurface,
+                    focusedBorderColor = BrandEmerald,
+                    unfocusedBorderColor = BrandBorder,
+                    focusedTextColor = BrandOnBg,
+                    unfocusedTextColor = BrandOnBg
+                )
             )
             Spacer(modifier = Modifier.width(8.dp))
-            FilledTonalButton(onClick = { viewModel.search() }) {
-                Text("Search")
+            Button(
+                onClick = { viewModel.search() },
+                colors = ButtonDefaults.buttonColors(containerColor = BrandSurfaceElev),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Search", color = BrandOnBg)
             }
         }
 
-        // Quick Tag Chips
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(quickTags) { tag ->
-                SuggestionChip(
-                    onClick = {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = BrandSurfaceHigh,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder),
+                    modifier = Modifier.clickable {
                         viewModel.updateSearchQuery(tag)
                         viewModel.search()
-                    },
-                    label = { Text(tag) }
-                )
+                    }
+                ) {
+                    Text(
+                        text = tag,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = BrandOnBgMuted,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    )
+                }
             }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         when {
             uiState.isSearching -> {
@@ -561,7 +644,7 @@ private fun SearchModelsTab(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(color = BrandEmerald)
                 }
             }
             uiState.searchResults.isEmpty() -> {
@@ -571,7 +654,8 @@ private fun SearchModelsTab(
                 ) {
                     Text(
                         text = "No models found. Try a different search query.",
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        color = BrandOnBgSubtle,
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
@@ -594,17 +678,20 @@ private fun SearchModelsTab(
 
 @Composable
 private fun ModelSearchItem(model: HfModelSearchResult, onClick: () -> Unit) {
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(12.dp),
+        color = BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Text(
                 text = model.id,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
+                color = BrandOnBg,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -613,22 +700,22 @@ private fun ModelSearchItem(model: HfModelSearchResult, onClick: () -> Unit) {
 
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp), tint = BrandOnBgSubtle)
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = formatNumber(model.downloads),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        color = BrandOnBgMuted
                     )
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Favorite, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                    Icon(Icons.Default.Favorite, contentDescription = null, modifier = Modifier.size(14.dp), tint = BrandOnBgSubtle)
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = formatNumber(model.likes),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        color = BrandOnBgMuted
                     )
                 }
             }
@@ -643,25 +730,28 @@ private fun ModelFilesView(
     viewModel: ModelBrowserViewModel
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        Card(
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(12.dp),
+            color = BrandSurface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = selected.id,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = BrandOnBg
                 )
-                Row(modifier = Modifier.padding(top = 4.dp)) {
-                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp), tint = BrandEmeraldLight)
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "${selected.downloads} total downloads",
+                        text = "${selected.downloads} downloads",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        color = BrandOnBgMuted
                     )
                 }
             }
@@ -670,14 +760,14 @@ private fun ModelFilesView(
         when {
             uiState.isLoadingFiles -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(color = BrandEmerald)
                 }
             }
             uiState.modelFiles.isEmpty() -> {
                 Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                     Text(
                         text = "No compatible GGUF files found (<= 4GB)",
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        color = BrandOnBgSubtle
                     )
                 }
             }
@@ -720,8 +810,12 @@ private fun ModelFileItem(
     onActivate: () -> Unit,
     onCancel: () -> Unit
 ) {
-    Card(shape = RoundedCornerShape(12.dp)) {
-        Column(modifier = Modifier.padding(16.dp)) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -731,29 +825,30 @@ private fun ModelFileItem(
                         text = file.filename,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
+                        color = BrandOnBg,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
 
                     Row(
                         modifier = Modifier.padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
                             text = if (file.sizeInGb >= 1.0) String.format("%.2f GB", file.sizeInGb) else "${file.sizeInMb} MB",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            color = BrandOnBgMuted
                         )
 
                         file.quantType?.let { quant ->
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
-                                color = StatusInfo.copy(alpha = 0.15f)
+                                color = BrandSurfaceElev
                             ) {
                                 Text(
                                     text = quant,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = StatusInfo,
+                                    color = BrandEmeraldLight,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -771,13 +866,17 @@ private fun ModelFileItem(
                         }
                     }
                     isDownloaded -> {
-                        FilledTonalButton(onClick = onActivate, shape = RoundedCornerShape(8.dp)) {
-                            Text("Load")
+                        Button(
+                            onClick = onActivate,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandSurfaceElev)
+                        ) {
+                            Text("Load", color = BrandOnBg)
                         }
                     }
                     !isDownloading -> {
                         IconButton(onClick = onDownload) {
-                            Icon(Icons.Default.Download, contentDescription = "Download", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.Download, contentDescription = "Download", tint = BrandEmeraldLight)
                         }
                     }
                 }
@@ -802,14 +901,14 @@ private fun DownloadedModelsTab(
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
+                Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(44.dp), tint = BrandOnBgSubtle)
                 Spacer(modifier = Modifier.height(12.dp))
-                Text("No Models Downloaded Yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("No Models Downloaded Yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = BrandOnBg)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     "Browse the Featured or Search tabs to download a GGUF model for on-device AI code reviews.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    color = BrandOnBgMuted,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
@@ -824,12 +923,13 @@ private fun DownloadedModelsTab(
                 val sizeMb = file.length().toDouble() / (1024.0 * 1024.0)
                 val sizeFormatted = if (sizeMb >= 1024.0) String.format("%.2f GB", sizeMb / 1024.0) else String.format("%.1f MB", sizeMb)
 
-                Card(
+                Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                        else MaterialTheme.colorScheme.surfaceVariant
+                    color = if (isActive) BrandSurfaceElev else BrandSurface,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isActive) BrandEmerald.copy(alpha = 0.5f) else BrandBorder
                     )
                 ) {
                     Row(
@@ -841,6 +941,7 @@ private fun DownloadedModelsTab(
                                 text = file.name,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
+                                color = BrandOnBg,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -849,7 +950,7 @@ private fun DownloadedModelsTab(
                                 Text(
                                     text = sizeFormatted,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    color = BrandOnBgMuted
                                 )
                                 if (isActive) {
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -870,11 +971,12 @@ private fun DownloadedModelsTab(
                         }
 
                         if (!isActive) {
-                            FilledTonalButton(
+                            Button(
                                 onClick = { viewModel.loadAndActivateModel(file) },
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandSurfaceElev)
                             ) {
-                                Text("Set Active")
+                                Text("Set Active", color = BrandOnBg)
                             }
                         }
 
@@ -884,7 +986,7 @@ private fun DownloadedModelsTab(
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = "Delete",
-                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                                tint = StatusFail.copy(alpha = 0.8f)
                             )
                         }
                     }

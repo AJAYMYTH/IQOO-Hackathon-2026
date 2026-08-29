@@ -1,23 +1,29 @@
 package com.apexos.repoguardian.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.apexos.repoguardian.ui.splash.SplashScreen
+import com.apexos.repoguardian.data.preferences.PreferencesManager
 import com.apexos.repoguardian.ui.auth.AuthScreen
-import com.apexos.repoguardian.ui.repopicker.RepoPickerScreen
-import com.apexos.repoguardian.ui.dashboard.DashboardScreen
-import com.apexos.repoguardian.ui.review.ReviewScreen
-import com.apexos.repoguardian.ui.prstatus.PrStatusScreen
+import com.apexos.repoguardian.ui.chat.ChatScreen
 import com.apexos.repoguardian.ui.cicd.CiCdGeneratorScreen
-import com.apexos.repoguardian.ui.settings.SettingsScreen
+import com.apexos.repoguardian.ui.dashboard.DashboardScreen
 import com.apexos.repoguardian.ui.modelbrowser.ModelBrowserScreen
+import com.apexos.repoguardian.ui.onboarding.OnboardingScreen
+import com.apexos.repoguardian.ui.prstatus.PrStatusScreen
+import com.apexos.repoguardian.ui.repopicker.RepoPickerScreen
+import com.apexos.repoguardian.ui.review.ReviewScreen
+import com.apexos.repoguardian.ui.settings.SettingsScreen
+import com.apexos.repoguardian.ui.splash.SplashScreen
+import kotlinx.coroutines.launch
 
 object Routes {
     const val SPLASH = "splash"
+    const val ONBOARDING = "onboarding"
     const val AUTH = "auth"
     const val REPO_PICKER = "repo_picker"
     const val DASHBOARD = "dashboard"
@@ -34,20 +40,38 @@ object Routes {
 }
 
 @Composable
-fun NavGraph(navController: NavHostController) {
+fun NavGraph(
+    navController: NavHostController,
+    preferencesManager: PreferencesManager
+) {
+    val coroutineScope = rememberCoroutineScope()
+
     NavHost(navController = navController, startDestination = Routes.SPLASH) {
         composable(Routes.SPLASH) {
             SplashScreen(navController = navController)
         }
+
+        composable(Routes.ONBOARDING) {
+            OnboardingScreen(
+                navController = navController,
+                onOnboardingComplete = {
+                    preferencesManager.setOnboardingSeen()
+                }
+            )
+        }
+
         composable(Routes.AUTH) {
             AuthScreen(navController = navController)
         }
+
         composable(Routes.REPO_PICKER) {
             RepoPickerScreen(navController = navController)
         }
+
         composable(Routes.DASHBOARD) {
             DashboardScreen(navController = navController)
         }
+
         composable(
             route = Routes.REVIEW,
             arguments = listOf(
@@ -58,6 +82,7 @@ fun NavGraph(navController: NavHostController) {
         ) {
             ReviewScreen(navController = navController)
         }
+
         composable(
             route = Routes.PR_STATUS,
             arguments = listOf(
@@ -68,6 +93,7 @@ fun NavGraph(navController: NavHostController) {
         ) {
             PrStatusScreen(navController = navController)
         }
+
         composable(
             route = Routes.CICD_GENERATOR,
             arguments = listOf(
@@ -77,14 +103,17 @@ fun NavGraph(navController: NavHostController) {
         ) {
             CiCdGeneratorScreen(navController = navController)
         }
+
         composable(Routes.SETTINGS) {
             SettingsScreen(navController = navController)
         }
+
         composable(Routes.MODEL_BROWSER) {
             ModelBrowserScreen(navController = navController)
         }
+
         composable(Routes.CHAT) {
-            com.apexos.repoguardian.ui.chat.ChatScreen(navController = navController)
+            ChatScreen(navController = navController)
         }
     }
 }
