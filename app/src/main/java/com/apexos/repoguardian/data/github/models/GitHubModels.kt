@@ -66,6 +66,30 @@ data class RepoOwner(
     @Json(name = "avatar_url") val avatarUrl: String? = null
 )
 
+@JsonClass(generateAdapter = true)
+data class RepoDetail(
+    val id: Long,
+    val name: String,
+    @Json(name = "full_name") val fullName: String,
+    val description: String? = null,
+    val language: String? = null,
+    @Json(name = "default_branch") val defaultBranch: String = "main",
+    @Json(name = "stargazers_count") val stargazersCount: Int = 0,
+    @Json(name = "forks_count") val forksCount: Int = 0,
+    @Json(name = "open_issues_count") val openIssuesCount: Int = 0,
+    val private: Boolean = false,
+    val topics: List<String>? = null,
+    @Json(name = "html_url") val htmlUrl: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class DirectoryItem(
+    val name: String,
+    val path: String,
+    val type: String, // "file" or "dir"
+    val size: Long? = 0L
+)
+
 // === Commit Models ===
 
 @JsonClass(generateAdapter = true)

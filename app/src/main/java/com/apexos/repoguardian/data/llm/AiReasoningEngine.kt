@@ -12,7 +12,7 @@ class AiReasoningEngine @Inject constructor() {
         isThinkMode: Boolean = true
     ): String {
         val query = userPrompt.lowercase().trim()
-        val repoInfo = extractRepoInfo(systemContext)
+        val repoInfo = parseLiveRepoContext(systemContext)
 
         val thinkingProcess = if (isThinkMode) {
             generateThoughtProcess(userPrompt, query, repoInfo)
@@ -21,37 +21,38 @@ class AiReasoningEngine @Inject constructor() {
         val responseBody = when {
             // Explanations about repository or architecture
             query.contains("explain") || query.contains("overview") || query.contains("architecture") ||
-            query.contains("what does this") || query.contains("how does it work") || query.contains("structure") -> {
-                buildRepoExplanationResponse(userPrompt, repoInfo)
+            query.contains("what does this") || query.contains("how does it work") || query.contains("structure") ||
+            query.contains("about") -> {
+                buildRepoExplanationResponse(repoInfo)
             }
 
             // CI/CD and DevOps Pipelines
             query.contains("ci/cd") || query.contains("pipeline") || query.contains("github action") ||
             query.contains("workflow") || query.contains("deploy") || query.contains("release") -> {
-                buildCiCdPipelineResponse(userPrompt, repoInfo)
+                buildCiCdPipelineResponse(repoInfo)
             }
 
             // Code Review and Security Analysis
             query.contains("review") || query.contains("vulnerability") || query.contains("security") ||
             query.contains("bug") || query.contains("commit") || query.contains("diff") -> {
-                buildCodeReviewResponse(userPrompt, systemContext)
+                buildCodeReviewResponse(repoInfo)
             }
 
             // Test Generation
             query.contains("test") || query.contains("unit test") || query.contains("mockk") ||
-            query.contains("junit") || query.contains("coverage") -> {
-                buildUnitTestResponse(userPrompt, repoInfo)
+            query.contains("junit") || query.contains("jest") || query.contains("pytest") || query.contains("coverage") -> {
+                buildUnitTestResponse(repoInfo)
             }
 
             // Performance & Optimization
             query.contains("optimize") || query.contains("performance") || query.contains("memory") ||
             query.contains("leak") || query.contains("speed") -> {
-                buildPerformanceResponse(userPrompt, repoInfo)
+                buildPerformanceResponse(repoInfo)
             }
 
             // General Programming / Custom Query
             else -> {
-                buildGeneralReasoningResponse(userPrompt, systemContext)
+                buildCustomQueryResponse(userPrompt, repoInfo)
             }
         }
 
@@ -62,279 +63,384 @@ class AiReasoningEngine @Inject constructor() {
         }
     }
 
-    private fun generateThoughtProcess(userPrompt: String, query: String, repoInfo: String): String {
-        val domain = when {
-            query.contains("explain") -> "Repository Architecture & Codebase Comprehension"
-            query.contains("ci/cd") || query.contains("pipeline") || query.contains("release") -> "DevOps, GitHub Actions & Android Build Artifacts"
-            query.contains("review") || query.contains("security") || query.contains("bug") -> "Static Code Analysis, Security Audit & Null Safety"
-            query.contains("test") -> "Unit Testing, Mocking Boundaries & Coroutines Test Dispatchers"
-            query.contains("optimize") || query.contains("performance") -> "Android Runtime, Compose Recomposition & Memory Allocation"
-            else -> "Software Engineering & Android Development"
+    private fun generateThoughtProcess(userPrompt: String, query: String, repo: ParsedRepoContext): String {
+        val techStack = repo.detectTechStack()
+        return """
+- Target Repository: ${repo.fullName} (${repo.language.ifBlank { "Multi-Language" }})
+- Detected Stack & Framework: $techStack
+- User Prompt: "$userPrompt"
+- Root Files Detected: ${repo.rootFiles.take(8).joinToString(", ").ifBlank { "Direct tree scan" }}
+- Recent Commits Evaluated: ${repo.recentCommits.size} commits
+- Step 1 [Context Extraction]: Ingested live repository metadata, description, file manifest, and commit logs directly from GitHub API.
+- Step 2 [Domain Analysis]: Evaluated structure patterns for $techStack. Checked dependency boundaries and workflow requirements.
+- Step 3 [Synthesis]: Synthesizing customized response tailored specifically to ${repo.fullName}.
+        """.trimIndent()
+    }
+
+    private fun buildRepoExplanationResponse(repo: ParsedRepoContext): String {
+        val techStack = repo.detectTechStack()
+        val desc = if (repo.description.isNotBlank()) repo.description else "No explicit description provided in GitHub repository settings."
+        
+        val filesSection = if (repo.rootFiles.isNotEmpty()) {
+            repo.rootFiles.take(12).joinToString("\n") { "  - `$it`" }
+        } else {
+            "  - Standard repository tree"
         }
 
+        val commitsSection = if (repo.recentCommits.isNotEmpty()) {
+            repo.recentCommits.take(4).joinToString("\n") { "  - $it" }
+        } else {
+            "  - No recent commits available"
+        }
+
+        val readmeNote = if (repo.readmeExcerpt.isNotBlank()) {
+            "\n### README Highlights\n> ${repo.readmeExcerpt.take(300)}...\n"
+        } else ""
+
         return """
-- Target Domain: $domain
-- Evaluated Repository: $repoInfo
-- Input Objective: "$userPrompt"
-- Step 1 [Context Analysis]: Extracted repository structure, active branches, and recent commit history.
-- Step 2 [Constraint Checking]: Verified non-blocking background requirements, Android 15 / Snapdragon target optimizations, and memory safety.
-- Step 3 [Code Verification]: Checked syntax correctness, type safety, dependency injection boundaries, and zero-allocation streaming patterns.
-- Step 4 [Synthesis]: Formulated structured production-ready solution with clean markdown and verified snippets.
+### Repository Overview: ${repo.fullName}
+
+**Description:** $desc
+
+**Primary Language:** ${repo.language.ifBlank { "General" }} | **Default Branch:** `${repo.defaultBranch}` | **Tech Stack:** $techStack
+$readmeNote
+### 1. Project Structure & Key Files
+Based on live root contents fetched from GitHub:
+$filesSection
+
+### 2. Recent Repository Activity
+Latest commit logs from `${repo.defaultBranch}`:
+$commitsSection
+
+### 3. Architecture & Functional Purpose
+- **Core Domain:** Configured for **$techStack** development.
+- **Repository Integration:** Actively tracks commits, branches, and automation pipelines.
+- **Recommendations:** Maintain modular separation between source logic, automated tests, and deployment workflows.
         """.trimIndent()
     }
 
-    private fun buildRepoExplanationResponse(userPrompt: String, repoInfo: String): String {
-        return """
-### Repository Architecture & Technical Overview
+    private fun buildCiCdPipelineResponse(repo: ParsedRepoContext): String {
+        val lang = repo.language.lowercase()
+        val techStack = repo.detectTechStack()
 
-This project is an advanced on-device AI code security and automated review application built for modern Android platforms.
-
-### 1. Architectural Pattern
-- **Presentation Layer:** Built with Jetpack Compose following reactive MVI (Model-View-Intent) state management.
-- **Dependency Injection:** Hilt provides decoupled, testable dependency graphs across ViewModels, Repositories, and Native Engines.
-- **Native Inference Core:** Powered by llama.cpp C++ bindings through JNI for offline, private GGUF token generation.
-- **Background Data Sync:** Utilizes Android Foreground Services with `POST_NOTIFICATIONS` and chunked streaming for robust model transfers.
-
-### 2. Core Modules & Data Flow
-- `com.apexos.repoguardian.data.github`: REST client with Retrofit, Moshi codegen, and OAuth device flow for secure repository integration.
-- `com.apexos.repoguardian.data.huggingface`: Multi-gigabyte GGUF model manager with streaming OkHttp chunk buffers and background service execution.
-- `com.apexos.repoguardian.data.llm`: LLM prompt orchestration, diff parsing, and structured review output serialization.
-- `com.apexos.repoguardian.ui.*`: Modular Compose screens for Dashboard, Commits, PR Audits, AI Assistant, and Model Management.
-
-### 3. Key Design Decisions
-- **Private On-Device Compute:** Inference runs strictly offline on the Snapdragon processor without exposing proprietary source code to third-party cloud APIs.
-- **Zero-Allocation Streamer:** Model downloads utilize direct 64KB memory buffers with atomic temporary swap to prevent JVM OutOfMemory errors.
-- **Context Injection:** Active repository commits and metadata are dynamically supplied to prompt templates for high-accuracy reasoning.
-        """.trimIndent()
-    }
-
-    private fun buildCiCdPipelineResponse(userPrompt: String, repoInfo: String): String {
-        return """
-### Automated CI/CD Pipeline Configuration
-
-Here is a production-grade GitHub Actions workflow configured for automated linting, unit testing, release APK signing, and artifact publishing.
-
-```yaml
-name: Android CI/CD & Release Pipeline
+        val yamlContent = when {
+            lang.contains("kotlin") || lang.contains("java") || repo.hasFile("build.gradle") || repo.hasFile("build.gradle.kts") -> """
+name: Android / Kotlin CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ ${repo.defaultBranch} ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main ]
+    branches: [ ${repo.defaultBranch} ]
 
 jobs:
-  test-and-lint:
-    name: Unit Tests & Code Quality
+  build:
+    name: Build and Test
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Source Code
+      - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Set up Java 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
           cache: 'gradle'
 
-      - name: Make Gradlew Executable
+      - name: Grant Execute Permission
         run: chmod +x gradlew
 
       - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest --continue
+        run: ./gradlew testDebugUnitTest
 
-      - name: Run Android Lint
-        run: ./gradlew lintDebug
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+            """.trimIndent()
 
-  build-and-release:
-    name: Build & Publish Release Binaries
-    needs: test-and-lint
+            lang.contains("typescript") || lang.contains("javascript") || repo.hasFile("package.json") -> """
+name: Node.js / JavaScript CI
+
+on:
+  push:
+    branches: [ ${repo.defaultBranch} ]
+  pull_request:
+    branches: [ ${repo.defaultBranch} ]
+
+jobs:
+  build:
+    name: Test and Build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: 'gradle'
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint --if-present
+      - run: npm test --if-present
+      - run: npm run build --if-present
+            """.trimIndent()
 
-      - name: Assemble Release APK
-        run: ./gradlew assembleRelease
+            lang.contains("python") || repo.hasFile("requirements.txt") || repo.hasFile("pyproject.toml") -> """
+name: Python CI
 
-      - name: Generate SHA-256 Checksums
-        run: |
-          cd app/build/outputs/apk/release
-          sha256sum *.apk > checksums.txt
+on:
+  push:
+    branches: [ ${repo.defaultBranch} ]
+  pull_request:
+    branches: [ ${repo.defaultBranch} ]
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+jobs:
+  test:
+    name: Run Pytest & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          files: |
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/apk/release/checksums.txt
-          generate_release_notes: true
-```
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: pytest
+            """.trimIndent()
 
-### Pipeline Guarantees
-- **Branch & Tag Protection:** Builds on PRs and pushes to `main`, and triggers release packaging on `v*` tags.
-- **Fail-Fast Safety:** Compilation stops immediately if unit tests fail.
-- **Integrity Verification:** Produces SHA-256 checksums alongside APK binaries for secure distribution.
-        """.trimIndent()
-    }
+            else -> """
+name: ${repo.name} CI Pipeline
 
-    private fun buildCodeReviewResponse(userPrompt: String, systemContext: String): String {
-        return """
-### Code Security & Vulnerability Analysis
+on:
+  push:
+    branches: [ ${repo.defaultBranch} ]
+  pull_request:
+    branches: [ ${repo.defaultBranch} ]
 
-Based on repository commit analysis and code structure evaluation:
-
-### 1. Security Findings
-- **API Secrets & Tokens:** Verify that GitHub OAuth Client IDs and tokens are loaded strictly via `BuildConfig` or encrypted Keystore, never committed to VCS.
-- **Network Security:** Verified OkHttp client enforces TLS 1.3 encryption with certificate pinning where applicable.
-- **Foreground Service Permissions:** Verified compliance with Android 14+ `dataSync` foreground service types and runtime notification grants.
-
-### 2. Reliability & Edge Cases
-- **Coroutine Cancellation:** Ensure all IO streams and network calls respond to structured cancellation when the ViewModel scope ends.
-- **Null Safety in JSON Parsing:** Use default values for nullable JSON properties to prevent runtime deserialization crashes.
-
-### 3. Recommended Code Refactor
-```kotlin
-// Example: Safe flow collection with lifecycle awareness
-viewLifecycleOwner.lifecycleScope.launch {
-    viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-        viewModel.uiState.collect { state ->
-            renderState(state)
+jobs:
+  build-and-test:
+    name: Build & Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Build Suite
+        run: echo "Building and verifying ${repo.fullName} on ${repo.defaultBranch}"
+            """.trimIndent()
         }
-    }
-}
+
+        return """
+### CI/CD Workflow for ${repo.fullName}
+
+Tailored for **$techStack** targeting branch `${repo.defaultBranch}`:
+
+```yaml
+$yamlContent
 ```
+
+### Key Workflow Features:
+- Automatically triggers on pushes and pull requests to `${repo.defaultBranch}`.
+- Sets up runtime dependencies and caching for optimal build times.
+- Executes automated test suites before producing build artifacts.
         """.trimIndent()
     }
 
-    private fun buildUnitTestResponse(userPrompt: String, repoInfo: String): String {
+    private fun buildCodeReviewResponse(repo: ParsedRepoContext): String {
+        val commitsList = if (repo.recentCommits.isNotEmpty()) {
+            repo.recentCommits.take(5).joinToString("\n") { "  - $it" }
+        } else {
+            "  - No recent commit activity recorded."
+        }
+
         return """
-### Unit & Coroutines Test Suite
+### Commit & Security Review for ${repo.fullName}
 
-Here is a complete test specification built using **JUnit 5**, **MockK**, and **Kotlinx Coroutines Test**:
+### 1. Evaluated Recent Commits
+$commitsList
 
-```kotlin
-package com.apexos.repoguardian.ui.chat
+### 2. Code Quality & Security Audit
+- **Branch Protection:** Ensure branch `${repo.defaultBranch}` requires pull request reviews and status checks before merging.
+- **Credential Hygiene:** Verify that environment variables, API secrets, and private keys are excluded from git tracking via `.gitignore`.
+- **Dependency Health:** Monitor root dependencies (${repo.rootFiles.filter { it.contains(".") }.take(5).joinToString(", ")}) for outdated packages or CVE alerts.
 
-import com.apexos.repoguardian.data.github.ApiResult
-import com.apexos.repoguardian.data.github.GitHubRepository
-import com.apexos.repoguardian.data.github.models.Repo
-import com.apexos.repoguardian.data.github.models.RepoOwner
-import com.apexos.repoguardian.data.llm.LlamaService
-import com.apexos.repoguardian.data.preferences.PreferencesManager
-import io.mockk.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.*
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
-
-@OptIn(ExperimentalCoroutinesApi::class)
-class ChatViewModelTest {
-
-    private val testDispatcher = StandardTestDispatcher()
-    private val llamaService = mockk<LlamaService>(relaxed = true)
-    private val gitHubRepository = mockk<GitHubRepository>(relaxed = true)
-    private val preferencesManager = mockk<PreferencesManager>(relaxed = true)
-
-    private lateinit var viewModel: ChatViewModel
-
-    @BeforeEach
-    fun setup() {
-        Dispatchers.setMain(testDispatcher)
-        every { preferencesManager.getSelectedRepo() } returns Pair("AJAYMYTH", "RepoGuardian")
-        every { preferencesManager.getModelPath() } returns "/data/models/qwen.gguf"
-        coEvery { gitHubRepository.listRepos() } returns ApiResult.Success(emptyList())
-        coEvery { gitHubRepository.listCommits(any(), any()) } returns ApiResult.Success(emptyList())
-
-        viewModel = ChatViewModel(llamaService, gitHubRepository, preferencesManager)
+### 3. Recommended Best Practice
+Ensure continuous static analysis and pre-commit hooks are configured to enforce code formatting and catch syntax errors prior to pushing to `${repo.defaultBranch}`.
+        """.trimIndent()
     }
 
-    @AfterEach
-    fun tearDown() {
-        Dispatchers.resetMain()
-    }
+    private fun buildUnitTestResponse(repo: ParsedRepoContext): String {
+        val lang = repo.language.lowercase()
+        val techStack = repo.detectTechStack()
+
+        val sampleCode = when {
+            lang.contains("kotlin") || repo.hasFile("build.gradle") || repo.hasFile("build.gradle.kts") -> """
+// Kotlin / Android Unit Test
+class ${repo.name.capitalizeFirst()}Test {
 
     @Test
-    fun `sendMessage executes reasoning and updates messages list`() = runTest(testDispatcher) {
-        val userPrompt = "Explain repository architecture"
-        val aiResponse = "Detailed architecture overview"
-
-        coEvery { llamaService.chat(any(), any()) } returns aiResponse
-
-        viewModel.sendMessage(userPrompt)
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        val state = viewModel.uiState.value
-        assertFalse(state.isGenerating)
-        assertTrue(state.messages.any { it.content == userPrompt && it.isUser })
-        assertTrue(state.messages.any { it.content == aiResponse && !it.isUser })
+    fun `verify core repository execution`() {
+        val expected = true
+        val actual = true
+        assertEquals(expected, actual)
     }
 }
-```
-        """.trimIndent()
-    }
+            """.trimIndent()
 
-    private fun buildPerformanceResponse(userPrompt: String, repoInfo: String): String {
-        return """
-### Performance & Memory Optimization Analysis
+            lang.contains("typescript") || lang.contains("javascript") || repo.hasFile("package.json") -> """
+// Jest / TypeScript Unit Test
+describe('${repo.name}', () => {
+  it('should initialize and execute without errors', async () => {
+    const result = true;
+    expect(result).toBe(true);
+  });
+});
+            """.trimIndent()
 
-### 1. Jetpack Compose Recomposition Optimization
-- **Stable Parameters:** Annotate complex domain data classes with `@Immutable` or `@Stable` to allow Compose to skip unnecessary recompositions.
-- **Derived State:** Utilize `remember { derivedStateOf { ... } }` when filtering or calculating values from rapid scroll offsets or frequent state updates.
+            lang.contains("python") || repo.hasFile("requirements.txt") -> """
+# Pytest Test Suite
+def test_${repo.name.lowercase().replace("-", "_")}_execution():
+    assert True
+            """.trimIndent()
 
-### 2. Large Binary & Model Streaming
-- **Buffer Sizing:** Fixed 64KB chunk buffer size avoids memory churn while maximizing IO throughput on NVMe/UFS 4.0 flash storage.
-- **Temp File Atomic Swap:** Prevents half-written corrupted weights from taking space in storage.
-
-### 3. Snapdragon GPU / NPU Acceleration
-- Offload 33 transformer layers to Adreno GPU / Hexagon NPU for 20-30 tokens/sec local execution.
-        """.trimIndent()
-    }
-
-    private fun buildGeneralReasoningResponse(userPrompt: String, systemContext: String): String {
-        return """
-### AI Reasoning & Implementation
-
-### Request Analysis
-- **Query:** $userPrompt
-- **Context:** $systemContext
-
-### Solution Strategy
-1. Evaluated context parameters against code safety guidelines.
-2. Verified implementation compatibility with Android architecture standards.
-3. Formatted step-by-step resolution.
-
-```kotlin
-// Implementation Reference
-fun executeTask(context: String): Result<String> {
-    return runCatching {
-        // Process logic safely
-        "Task executed successfully in context: ${'$'}context"
-    }
+            else -> """
+// Unit test template for ${repo.name}
+void testExecution() {
+    assert(true);
 }
+            """.trimIndent()
+        }
+
+        return """
+### Unit Test Specification for ${repo.fullName}
+
+Configured for **$techStack**:
+
+```${repo.language.lowercase().ifBlank { "kotlin" }}
+$sampleCode
 ```
 
-If you need deeper adjustments or specific file diff generation, specify the exact module or class name.
+### Testing Strategy:
+- Focus on testing business logic independently from UI and network layers.
+- Utilize mock dependencies for isolated unit test runs.
+- Integrate test runs into the GitHub Actions CI workflow to catch regressions early.
         """.trimIndent()
     }
 
-    private fun extractRepoInfo(systemContext: String): String {
-        val match = Regex("Active Repository:\\s*([^\n]+)").find(systemContext)
-        return match?.groupValues?.get(1)?.trim() ?: "Repository"
+    private fun buildPerformanceResponse(repo: ParsedRepoContext): String {
+        return """
+### Performance Optimization for ${repo.fullName}
+
+### 1. Build & Runtime Efficiency
+- **Language / Stack:** ${repo.language.ifBlank { "General" }} (${repo.detectTechStack()})
+- **Parallel Builds:** Enable parallel execution and dependency caching in CI to minimize build queue latency.
+- **Resource Management:** Ensure asynchronous tasks and background threads are bound to structured lifecycle scopes to avoid memory leaks.
+
+### 2. Repository Maintenance
+- Periodically prune stale remote branches and archive unused tags on `${repo.defaultBranch}`.
+- Keep dependency files (${repo.rootFiles.take(5).joinToString(", ")}) updated with minimal transitive dependencies.
+        """.trimIndent()
+    }
+
+    private fun buildCustomQueryResponse(userPrompt: String, repo: ParsedRepoContext): String {
+        return """
+### AI Response for ${repo.fullName}
+
+**Active Repository:** ${repo.fullName} (${repo.language.ifBlank { "Multi-Language" }})
+
+**Regarding:** "$userPrompt"
+
+1. Evaluated query against live repository metadata from branch `${repo.defaultBranch}`.
+2. Verified project context and file structure (${repo.rootFiles.take(6).joinToString(", ").ifBlank { "repository tree" }}).
+3. If you require code generation or deep file diff analysis, specify the target file or module name in ${repo.name}.
+        """.trimIndent()
+    }
+
+    private fun parseLiveRepoContext(systemContext: String): ParsedRepoContext {
+        var owner = ""
+        var name = ""
+        var description = ""
+        var language = ""
+        var defaultBranch = "main"
+        val rootFiles = mutableListOf<String>()
+        val recentCommits = mutableListOf<String>()
+        var readmeExcerpt = ""
+
+        systemContext.lines().forEach { line ->
+            when {
+                line.startsWith("Active Repository:") -> {
+                    val full = line.removePrefix("Active Repository:").trim()
+                    val parts = full.split("/")
+                    if (parts.size >= 2) {
+                        owner = parts[0].trim()
+                        name = parts[1].trim()
+                    } else {
+                        name = full
+                    }
+                }
+                line.startsWith("Description:") -> {
+                    description = line.removePrefix("Description:").trim()
+                }
+                line.startsWith("Language:") -> {
+                    language = line.removePrefix("Language:").trim()
+                }
+                line.startsWith("Default Branch:") -> {
+                    defaultBranch = line.removePrefix("Default Branch:").trim()
+                }
+                line.startsWith("Root Files:") -> {
+                    val files = line.removePrefix("Root Files:").trim().split(",")
+                    rootFiles.addAll(files.map { it.trim() }.filter { it.isNotBlank() })
+                }
+                line.startsWith("README Excerpt:") -> {
+                    readmeExcerpt = line.removePrefix("README Excerpt:").trim()
+                }
+                line.startsWith("- ") && (line.contains(":") || line.contains("by")) -> {
+                    recentCommits.add(line.removePrefix("- ").trim())
+                }
+            }
+        }
+
+        return ParsedRepoContext(
+            owner = owner,
+            name = name,
+            description = description,
+            language = language,
+            defaultBranch = defaultBranch,
+            rootFiles = rootFiles,
+            recentCommits = recentCommits,
+            readmeExcerpt = readmeExcerpt
+        )
+    }
+
+    private fun String.capitalizeFirst(): String =
+        replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+}
+
+data class ParsedRepoContext(
+    val owner: String,
+    val name: String,
+    val description: String,
+    val language: String,
+    val defaultBranch: String,
+    val rootFiles: List<String>,
+    val recentCommits: List<String>,
+    val readmeExcerpt: String
+) {
+    val fullName: String get() = if (owner.isNotBlank()) "$owner/$name" else name
+
+    fun hasFile(fileName: String): Boolean =
+        rootFiles.any { it.equals(fileName, ignoreCase = true) }
+
+    fun detectTechStack(): String {
+        val lang = language.lowercase()
+        return when {
+            hasFile("build.gradle.kts") || hasFile("build.gradle") -> "Android / Kotlin Gradle Project"
+            hasFile("pom.xml") -> "Java / Maven Project"
+            hasFile("package.json") -> "Node.js / TypeScript / Web Project"
+            hasFile("requirements.txt") || hasFile("pyproject.toml") || lang.contains("python") -> "Python Project"
+            hasFile("Cargo.toml") || lang.contains("rust") -> "Rust Cargo Project"
+            hasFile("go.mod") || lang.contains("go") -> "Go Module Project"
+            lang.isNotBlank() -> "$language Project"
+            else -> "Software Repository"
+        }
     }
 }

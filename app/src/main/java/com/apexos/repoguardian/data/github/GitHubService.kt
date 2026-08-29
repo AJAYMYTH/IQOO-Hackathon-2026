@@ -61,6 +61,24 @@ interface GitHubDataApi {
         @Body body: CreateRefRequest
     ): GitRef
 
+    @GET("repos/{owner}/{repo}")
+    suspend fun getRepo(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String
+    ): RepoDetail
+
+    @GET("repos/{owner}/{repo}/readme")
+    suspend fun getReadme(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String
+    ): FileContentResponse
+
+    @GET("repos/{owner}/{repo}/contents")
+    suspend fun getRootContents(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String
+    ): List<DirectoryItem>
+
     @GET("repos/{owner}/{repo}/contents/{path}")
     suspend fun getFileContent(
         @Path("owner") owner: String,

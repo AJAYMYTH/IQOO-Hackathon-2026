@@ -5,11 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.apexos.repoguardian.data.github.ApiResult
 import com.apexos.repoguardian.data.github.GitHubRepository
 import com.apexos.repoguardian.data.github.models.Commit
+import com.apexos.repoguardian.data.github.models.DirectoryItem
 import com.apexos.repoguardian.data.github.models.Repo
+import com.apexos.repoguardian.data.github.models.RepoDetail
 import com.apexos.repoguardian.data.huggingface.ModelDownloadManager
 import com.apexos.repoguardian.data.llm.LlamaService
 import com.apexos.repoguardian.data.preferences.PreferencesManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -41,17 +44,30 @@ data class QuickPrompt(
     val prompt: String
 )
 
+data class LiveRepoContext(
+    val owner: String = "",
+    val name: String = "",
+    val description: String = "",
+    val language: String = "",
+    val defaultBranch: String = "main",
+    val stars: Int = 0,
+    val forks: Int = 0,
+    val rootFiles: List<String> = emptyList(),
+    val readmeExcerpt: String = "",
+    val recentCommits: List<Commit> = emptyList()
+)
+
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isGenerating: Boolean = false,
     val repoOwner: String = "",
     val repoName: String = "",
+    val liveRepoContext: LiveRepoContext = LiveRepoContext(),
     val availableRepos: List<Repo> = emptyList(),
     val isRepoDropdownOpen: Boolean = false,
     val downloadedModels: List<File> = emptyList(),
     val isModelDropdownOpen: Boolean = false,
     val isThinkModeEnabled: Boolean = true,
-    val recentCommits: List<Commit> = emptyList(),
     val activeModelName: String = "No Model Loaded",
     val error: String? = null
 )
@@ -81,27 +97,22 @@ class ChatViewModel @Inject constructor(
         QuickPrompt(
             title = "Generate CI/CD",
             category = PromptCategory.CICD,
-            prompt = "Generate a production-ready GitHub Actions CI/CD workflow (.github/workflows/ci.yml) tailored for this repository with automated testing, lint checks, and artifact packaging."
+            prompt = "Generate a production-ready GitHub Actions CI/CD workflow tailored for this repository with automated testing, lint checks, and artifact packaging."
         ),
         QuickPrompt(
             title = "Write Unit Tests",
             category = PromptCategory.TESTS,
-            prompt = "Write comprehensive unit tests with MockK, JUnit 5, and Kotlin Coroutines Test for the primary ViewModel and Repository components of this repository."
-        ),
-        QuickPrompt(
-            title = "Release Pipeline",
-            category = PromptCategory.RELEASE,
-            prompt = "Create an automated GitHub Actions release workflow (.github/workflows/release.yml) triggered on version tags (v*) that compiles release APKs, generates SHA-256 checksums, and publishes a GitHub Release with changelogs."
+            prompt = "Write comprehensive unit tests tailored to the primary language and components of this repository."
         ),
         QuickPrompt(
             title = "Security Audit",
             category = PromptCategory.SECURITY,
-            prompt = "Perform a security audit on this repository. Check AndroidManifest permissions, API token handling, and networking configurations."
+            prompt = "Perform a security audit on this repository. Check dependencies, branch protection, and credential hygiene."
         ),
         QuickPrompt(
             title = "Optimize Performance",
             category = PromptCategory.PERFORMANCE,
-            prompt = "Analyze potential performance bottlenecks in Compose recompositions, coroutine lifecycle scopes, and background threads, and suggest optimization strategies."
+            prompt = "Analyze potential performance bottlenecks in runtime execution, memory allocation, and build speed, and suggest optimization strategies."
         )
     )
 
@@ -115,7 +126,7 @@ class ChatViewModel @Inject constructor(
             val downloaded = modelDownloadManager.getDownloadedModels()
             var modelPath = preferencesManager.getModelPath()
 
-            // If no model path set, but downloaded models exist, auto-select the first one
+            // If no model path set, but downloaded models exist, auto-select first one
             if (modelPath.isNullOrBlank() && downloaded.isNotEmpty()) {
                 val firstModel = downloaded.first()
                 modelPath = firstModel.absolutePath
@@ -134,15 +145,7 @@ class ChatViewModel @Inject constructor(
                 activeModelName = modelName
             )
 
-            if (selectedRepo != null) {
-                _uiState.value = _uiState.value.copy(
-                    repoOwner = selectedRepo.first,
-                    repoName = selectedRepo.second
-                )
-                loadRepoCommits(selectedRepo.first, selectedRepo.second)
-            }
-
-            // Load user repos for switcher
+            // Load user repos list
             when (val result = gitHubRepository.listRepos()) {
                 is ApiResult.Success<List<Repo>> -> {
                     _uiState.value = _uiState.value.copy(availableRepos = result.data)
@@ -150,34 +153,65 @@ class ChatViewModel @Inject constructor(
                 else -> {}
             }
 
-            // Add initial welcome message if empty
-            if (_uiState.value.messages.isEmpty()) {
-                val owner = _uiState.value.repoOwner.ifBlank { "AJAYMYTH" }
-                val repo = _uiState.value.repoName.ifBlank { "Repository" }
-                val welcome = """
-### Repo Guardian AI Assistant
-
-Connected to repository `$owner/$repo` with model `$modelName`.
-
-You can ask questions about your code, request deep repository explanations, perform security commit audits, and generate CI/CD pipelines and unit test suites.
-
-Select any quick action below or type a query to begin.
-                """.trimIndent()
-                _uiState.value = _uiState.value.copy(
-                    messages = listOf(ChatMessage(content = welcome, isUser = false))
-                )
+            if (selectedRepo != null) {
+                val owner = selectedRepo.first
+                val repo = selectedRepo.second
+                _uiState.value = _uiState.value.copy(repoOwner = owner, repoName = repo)
+                loadLiveRepositoryData(owner, repo)
+            } else if (_uiState.value.availableRepos.isNotEmpty()) {
+                val first = _uiState.value.availableRepos.first()
+                _uiState.value = _uiState.value.copy(repoOwner = first.owner.login, repoName = first.name)
+                loadLiveRepositoryData(first.owner.login, first.name)
             }
         }
     }
 
-    private fun loadRepoCommits(owner: String, name: String) {
+    private fun loadLiveRepositoryData(owner: String, repo: String) {
         viewModelScope.launch {
-            when (val result = gitHubRepository.listCommits(owner, name)) {
-                is ApiResult.Success<List<Commit>> -> {
-                    _uiState.value = _uiState.value.copy(recentCommits = result.data.take(5))
-                }
-                else -> {}
-            }
+            val repoDetailsDeferred = async { gitHubRepository.getRepo(owner, repo) }
+            val rootContentsDeferred = async { gitHubRepository.getRootContents(owner, repo) }
+            val readmeDeferred = async { gitHubRepository.getReadme(owner, repo) }
+            val commitsDeferred = async { gitHubRepository.listCommits(owner, repo) }
+
+            val repoDetail = (repoDetailsDeferred.await() as? ApiResult.Success<RepoDetail>)?.data
+            val rootContents = (rootContentsDeferred.await() as? ApiResult.Success<List<DirectoryItem>>)?.data ?: emptyList()
+            val readme = (readmeDeferred.await() as? ApiResult.Success<String>)?.data ?: ""
+            val commits = (commitsDeferred.await() as? ApiResult.Success<List<Commit>>)?.data ?: emptyList()
+
+            val liveCtx = LiveRepoContext(
+                owner = owner,
+                name = repo,
+                description = repoDetail?.description ?: "",
+                language = repoDetail?.language ?: "",
+                defaultBranch = repoDetail?.defaultBranch ?: "main",
+                stars = repoDetail?.stargazersCount ?: 0,
+                forks = repoDetail?.forksCount ?: 0,
+                rootFiles = rootContents.map { it.name },
+                readmeExcerpt = readme.take(500),
+                recentCommits = commits.take(6)
+            )
+
+            _uiState.value = _uiState.value.copy(
+                liveRepoContext = liveCtx,
+                repoOwner = owner,
+                repoName = repo
+            )
+
+            // Initial welcome message with live data
+            val langText = if (liveCtx.language.isNotBlank()) " [${liveCtx.language}]" else ""
+            val descText = if (liveCtx.description.isNotBlank()) "\n> ${liveCtx.description}" else ""
+            val welcome = """
+### Repo Guardian AI Assistant
+
+Connected to repository **$owner/$repo**$langText.
+$descText
+
+Live repository metadata and root files loaded from GitHub. Select a quick prompt below or ask any question about this codebase.
+            """.trimIndent()
+
+            _uiState.value = _uiState.value.copy(
+                messages = listOf(ChatMessage(content = welcome, isUser = false))
+            )
         }
     }
 
@@ -224,12 +258,7 @@ Select any quick action below or type a query to begin.
                 repoName = repo.name,
                 isRepoDropdownOpen = false
             )
-            loadRepoCommits(repo.owner.login, repo.name)
-
-            val switchNotice = "Switched active repository context to **${repo.fullName}**."
-            _uiState.value = _uiState.value.copy(
-                messages = _uiState.value.messages + ChatMessage(content = switchNotice, isUser = false)
-            )
+            loadLiveRepositoryData(repo.owner.login, repo.name)
         }
     }
 
@@ -245,19 +274,25 @@ Select any quick action below or type a query to begin.
 
         viewModelScope.launch {
             try {
-                val commitsSummary = if (_uiState.value.recentCommits.isNotEmpty()) {
-                    _uiState.value.recentCommits.joinToString("\n") {
+                val ctx = _uiState.value.liveRepoContext
+                val commitsSummary = if (ctx.recentCommits.isNotEmpty()) {
+                    ctx.recentCommits.joinToString("\n") {
                         val msg = it.commit.message.lines().firstOrNull() ?: ""
                         val author = it.commit.author?.name ?: "Author"
                         "- ${it.sha.take(7)}: $msg (by $author)"
                     }
                 } else {
-                    "No recent commits loaded"
+                    "No recent commits recorded"
                 }
 
                 val systemPrompt = """
-Active Repository: ${_uiState.value.repoOwner}/${_uiState.value.repoName}
-Recent Commits in Context:
+Active Repository: ${ctx.owner}/${ctx.name}
+Description: ${ctx.description}
+Language: ${ctx.language}
+Default Branch: ${ctx.defaultBranch}
+Root Files: ${ctx.rootFiles.joinToString(", ")}
+README Excerpt: ${ctx.readmeExcerpt.replace("\n", " ")}
+Recent Commits:
 $commitsSummary
                 """.trimIndent()
 
@@ -284,7 +319,9 @@ $commitsSummary
     }
 
     fun clearChat() {
-        val welcome = "Chat history cleared. How can I assist you with **${_uiState.value.repoOwner}/${_uiState.value.repoName}**?"
+        val owner = _uiState.value.repoOwner
+        val repo = _uiState.value.repoName
+        val welcome = "Chat history cleared. How can I assist you with repository **$owner/$repo**?"
         _uiState.value = _uiState.value.copy(
             messages = listOf(ChatMessage(content = welcome, isUser = false)),
             error = null

@@ -22,6 +22,24 @@ class GitHubRepository @Inject constructor(
         dataApi.listRepos()
     }
 
+    suspend fun getRepo(owner: String, repo: String): ApiResult<RepoDetail> = apiCall {
+        dataApi.getRepo(owner, repo)
+    }
+
+    suspend fun getReadme(owner: String, repo: String): ApiResult<String> = apiCall {
+        val res = dataApi.getReadme(owner, repo)
+        if (res.content != null) {
+            val cleanBase64 = res.content.replace("\n", "").replace("\r", "")
+            String(Base64.decode(cleanBase64, Base64.DEFAULT), Charsets.UTF_8)
+        } else {
+            ""
+        }
+    }
+
+    suspend fun getRootContents(owner: String, repo: String): ApiResult<List<DirectoryItem>> = apiCall {
+        dataApi.getRootContents(owner, repo)
+    }
+
     suspend fun listCommits(owner: String, repo: String): ApiResult<List<Commit>> = apiCall {
         dataApi.listCommits(owner, repo)
     }
