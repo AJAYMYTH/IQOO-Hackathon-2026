@@ -196,6 +196,11 @@ class GitHubRepository @Inject constructor(
         )
     }
 
+    suspend fun getLatestRelease(owner: String, repo: String): ApiResult<GitHubRelease> =
+        apiCall("getLatestRelease ($owner/$repo)") {
+            dataApi.getLatestRelease(owner, repo)
+        }
+
     private fun decodeBase64ToString(rawContent: String?): String {
         if (rawContent.isNullOrBlank()) return ""
         val cleanBase64 = rawContent.replace("\n", "").replace("\r", "").replace(" ", "").trim()

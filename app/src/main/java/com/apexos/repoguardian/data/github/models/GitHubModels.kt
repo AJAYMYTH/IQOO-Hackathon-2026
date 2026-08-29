@@ -274,3 +274,33 @@ data class GitHubIssue(
     @Json(name = "updated_at") val updatedAt: String? = null
 )
 
+// === Release Models ===
+
+@JsonClass(generateAdapter = true)
+data class GitHubRelease(
+    @Json(name = "tag_name") val tagName: String = "",
+    val name: String? = null,
+    val body: String? = null,
+    @Json(name = "html_url") val htmlUrl: String? = null,
+    @Json(name = "published_at") val publishedAt: String? = null,
+    val prerelease: Boolean = false,
+    val draft: Boolean = false,
+    val assets: List<ReleaseAsset> = emptyList()
+) {
+    val versionName: String get() = tagName.removePrefix("v").removePrefix("V")
+    val apkAsset: ReleaseAsset? get() = assets.firstOrNull { it.name.endsWith(".apk", ignoreCase = true) }
+}
+
+@JsonClass(generateAdapter = true)
+data class ReleaseAsset(
+    val name: String = "",
+    val size: Long = 0L,
+    @Json(name = "browser_download_url") val browserDownloadUrl: String = "",
+    @Json(name = "content_type") val contentType: String? = null
+) {
+    val sizeFormatted: String get() {
+        val mb = size.toDouble() / (1024.0 * 1024.0)
+        return if (mb >= 1024.0) String.format("%.2f GB", mb / 1024.0) else String.format("%.1f MB", mb)
+    }
+}
+

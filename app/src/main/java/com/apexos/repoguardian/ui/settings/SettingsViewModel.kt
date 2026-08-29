@@ -23,6 +23,9 @@ import javax.inject.Inject
 
 import com.apexos.repoguardian.core.logging.AppLogger
 import com.apexos.repoguardian.core.logging.LogEntry
+import com.apexos.repoguardian.data.update.AppUpdateManager
+import com.apexos.repoguardian.data.update.UpdateUiState
+import com.apexos.repoguardian.data.github.models.ReleaseAsset
 
 data class SettingsUiState(
     val user: GitHubUser? = null,
@@ -47,12 +50,16 @@ class SettingsViewModel @Inject constructor(
     private val preferencesManager: PreferencesManager,
     private val gitHubRepository: GitHubRepository,
     private val llamaService: LlamaService,
-    private val modelDownloadManager: ModelDownloadManager
+    private val modelDownloadManager: ModelDownloadManager,
+    private val appUpdateManager: AppUpdateManager
 ) : ViewModel() {
 
     val liveLogs: StateFlow<List<LogEntry>> = AppLogger.logs
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState
+
+    private val _updateUiState = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
+    val updateUiState: StateFlow<UpdateUiState> = _updateUiState
 
 
     init {
@@ -232,6 +239,32 @@ class SettingsViewModel @Inject constructor(
 
     fun clearSavedMessage() {
         _uiState.value = _uiState.value.copy(savedMessage = null)
+    }
+
+    fun checkForUpdates() {
+        viewModelScope.launch {
+            _updateUiState.value = UpdateUiState.Checking
+            val owner = _uiState.value.selectedRepoOwner.ifBlank { AppUpdateManager.DEFAULT_REPO_OWNER }
+            val repo = _uiState.value.selectedRepoName.ifBlank { AppUpdateManager.DEFAULT_REPO_NAME }
+            val result = appUpdateManager.checkForUpdates(owner, repo)
+            _updateUiState.value = result
+        }
+    }
+
+    fun downloadAndInstallUpdate(asset: ReleaseAsset, newVersion: String) {
+        viewModelScope.launch {
+            appUpdateManager.downloadApk(asset, newVersion).collect { state ->
+                _updateUiState.value = state
+            }
+        }
+    }
+
+    fun dismissUpdateState() {
+        _updateUiState.value = UpdateUiState.Idle
+    }
+
+    fun retryInstallDownloadedApk(file: File) {
+        appUpdateManager.installApk(file)
     }
 }
 

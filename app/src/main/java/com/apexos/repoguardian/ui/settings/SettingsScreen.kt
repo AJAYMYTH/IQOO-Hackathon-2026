@@ -22,7 +22,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import android.content.Intent
+import android.net.Uri
+import com.apexos.repoguardian.BuildConfig
+import com.apexos.repoguardian.data.github.models.ReleaseAsset
 import com.apexos.repoguardian.data.llm.ModelState
+import com.apexos.repoguardian.data.update.UpdateUiState
 import com.apexos.repoguardian.navigation.Routes
 import com.apexos.repoguardian.ui.components.AppBottomBar
 import com.apexos.repoguardian.ui.theme.*
@@ -92,15 +97,99 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val updateUiState by viewModel.updateUiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(updateUiState) {
+        if (updateUiState is UpdateUiState.UpdateAvailable) {
+            showUpdateDialog = true
+        }
+    }
 
     LaunchedEffect(uiState.savedMessage) {
         uiState.savedMessage?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearSavedMessage()
         }
+    }
+
+    val availableUpdate = updateUiState as? UpdateUiState.UpdateAvailable
+    if (showUpdateDialog && availableUpdate != null) {
+        AlertDialog(
+            onDismissRequest = { showUpdateDialog = false },
+            icon = { Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = BrandEmeraldLight) },
+            title = {
+                Text(
+                    text = "New Update Available: v${availableUpdate.newVersion}",
+                    color = BrandOnBg,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "A new version of Repo Guardian is ready to install directly on your device.\n\n" +
+                                "• Current Installed: v${availableUpdate.currentVersion}\n" +
+                                "• Latest Release: v${availableUpdate.newVersion}" +
+                                (availableUpdate.apkAsset?.let { "\n• Package Size: ${it.sizeFormatted}" } ?: ""),
+                        color = BrandOnBgMuted,
+                        fontSize = 13.sp
+                    )
+
+                    if (!availableUpdate.release.body.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = BrandSurfaceElev,
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 140.dp)
+                        ) {
+                            Text(
+                                text = availableUpdate.release.body,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BrandOnBg,
+                                modifier = Modifier
+                                    .padding(10.dp)
+                                    .verticalScroll(rememberScrollState())
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showUpdateDialog = false
+                        availableUpdate.apkAsset?.let { asset ->
+                            viewModel.downloadAndInstallUpdate(asset, availableUpdate.newVersion)
+                        } ?: run {
+                            availableUpdate.release.htmlUrl?.let { url ->
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                navController.context.startActivity(intent)
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = OnEmerald)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Install Update", color = OnEmerald, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showUpdateDialog = false
+                        viewModel.dismissUpdateState()
+                    },
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+                ) {
+                    Text("Later", color = BrandOnBg)
+                }
+            },
+            containerColor = BrandSurfaceHigh
+        )
     }
 
     if (showLogoutDialog) {
@@ -246,6 +335,17 @@ fun SettingsScreen(
                 onClearCacheClick = { showClearCacheDialog = true },
                 onDeleteModelClick = { viewModel.deleteDownloadedModel(it) },
                 onBrowseModelsClick = { navController.navigate(Routes.MODEL_BROWSER) }
+            )
+
+            // App Updates & Versioning section
+            AppUpdateCard(
+                updateState = updateUiState,
+                onCheckForUpdates = { viewModel.checkForUpdates() },
+                onInstallUpdate = { asset, newVersion ->
+                    viewModel.downloadAndInstallUpdate(asset, newVersion)
+                },
+                onDismissUpdate = { viewModel.dismissUpdateState() },
+                onRetryInstallDownloaded = { file -> viewModel.retryInstallDownloadedApk(file) }
             )
 
             HorizontalDivider(color = BrandBorder)
@@ -901,6 +1001,389 @@ fun OpenSourceCreditsCard() {
                         style = MaterialTheme.typography.labelSmall,
                         color = BrandOnBgMuted
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AppUpdateCard(
+    updateState: UpdateUiState,
+    onCheckForUpdates: () -> Unit,
+    onInstallUpdate: (asset: ReleaseAsset, newVersion: String) -> Unit,
+    onDismissUpdate: () -> Unit,
+    onRetryInstallDownloaded: (File) -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Header Row
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(BrandEmeraldMuted),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.SystemUpdate,
+                        contentDescription = null,
+                        tint = BrandEmeraldLight,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "App Updates & Releases",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandOnBg
+                    )
+                    Text(
+                        text = "Repo Guardian v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BrandOnBgMuted
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = BrandSurfaceHigh,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+                ) {
+                    Text(
+                        text = "ARM64-v8a",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = BrandEmeraldLight,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            HorizontalDivider(color = BrandBorder)
+
+            // Dynamic State Body
+            when (updateState) {
+                is UpdateUiState.Idle -> {
+                    Text(
+                        text = "Check GitHub releases for the latest updates, performance enhancements, and on-device model optimizations.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BrandOnBgMuted
+                    )
+
+                    Button(
+                        onClick = onCheckForUpdates,
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = OnEmerald)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Check for Updates", color = OnEmerald, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
+                is UpdateUiState.Checking -> {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = BrandSurfaceHigh,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = BrandEmeraldLight
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "Checking for new releases on GitHub...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BrandOnBg
+                            )
+                        }
+                    }
+                }
+
+                is UpdateUiState.UpToDate -> {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = StatusPass.copy(alpha = 0.10f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, StatusPass.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusPass, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Up to date (v${updateState.currentVersion})",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = StatusPass
+                                )
+                                Text(
+                                    text = "Checked: ${updateState.checkedAt}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BrandOnBgMuted
+                                )
+                            }
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onCheckForUpdates,
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = BrandOnBg)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Check Again", fontSize = 12.5.sp)
+                    }
+                }
+
+                is UpdateUiState.UpdateAvailable -> {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = BrandEmeraldMuted,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmerald.copy(alpha = 0.5f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Upgrade, contentDescription = null, tint = BrandEmeraldLight, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Version v${updateState.newVersion} Available",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = BrandEmeraldLight
+                                )
+                            }
+
+                            Text(
+                                text = "Current: v${updateState.currentVersion} • Package: ${updateState.apkAsset?.name ?: "app-release.apk"} (${updateState.apkAsset?.sizeFormatted ?: "Ready"})",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = BrandOnBgMuted
+                            )
+
+                            if (!updateState.release.body.isNullOrBlank()) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = BrandSurfaceHigh,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = updateState.release.body,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = BrandOnBg,
+                                        maxLines = 4,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(10.dp)
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (updateState.apkAsset != null) {
+                                    Button(
+                                        onClick = { onInstallUpdate(updateState.apkAsset, updateState.newVersion) },
+                                        modifier = Modifier.weight(1f).height(42.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                                    ) {
+                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = OnEmerald)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Install Update", color = OnEmerald, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = {
+                                            updateState.release.htmlUrl?.let { url ->
+                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                                context.startActivity(intent)
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f).height(42.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                                    ) {
+                                        Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp), tint = OnEmerald)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("View on GitHub", color = OnEmerald, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
+                                }
+
+                                OutlinedButton(
+                                    onClick = onDismissUpdate,
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = BrandOnBg)
+                                ) {
+                                    Text("Later", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                is UpdateUiState.Downloading -> {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = BrandSurfaceHigh,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmeraldLight.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Downloading Update: ${updateState.fileName}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = BrandOnBg
+                                )
+                                Text(
+                                    text = "${(updateState.progressPercent * 100).toInt()}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = BrandEmeraldLight
+                                )
+                            }
+
+                            LinearProgressIndicator(
+                                progress = { updateState.progressPercent },
+                                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                color = BrandEmerald,
+                                trackColor = BrandSurfaceElev
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val dlMb = updateState.downloadedBytes.toDouble() / (1024.0 * 1024.0)
+                                val totMb = updateState.totalBytes.toDouble() / (1024.0 * 1024.0)
+                                Text(
+                                    text = String.format("%.1f / %.1f MB", dlMb, totMb),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BrandOnBgMuted
+                                )
+                                Text(
+                                    text = updateState.speedFormatted,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BrandGreige
+                                )
+                            }
+                        }
+                    }
+                }
+
+                is UpdateUiState.DownloadReady -> {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = StatusPass.copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, StatusPass.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusPass, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Update Downloaded & Ready to Install",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = StatusPass
+                                )
+                            }
+
+                            Text(
+                                text = "The package installer has been launched. Tap below if you need to reopen the installation prompt.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BrandOnBgMuted
+                            )
+
+                            Button(
+                                onClick = { onRetryInstallDownloaded(updateState.apkFile) },
+                                modifier = Modifier.fillMaxWidth().height(44.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                            ) {
+                                Icon(Icons.Default.InstallMobile, contentDescription = null, modifier = Modifier.size(16.dp), tint = OnEmerald)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Open Package Installer", color = OnEmerald, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                is UpdateUiState.Error -> {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = StatusFail.copy(alpha = 0.10f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, StatusFail.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = StatusFail, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = updateState.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusFail
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = onCheckForUpdates,
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp), tint = OnEmerald)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Retry", color = OnEmerald, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

@@ -168,6 +168,22 @@ class GitHubIntegrationTest {
 
         override suspend fun updateFile(owner: String, repo: String, path: String, body: UpdateFileRequest): FileCommitResponse =
             FileCommitResponse(content = FileContent(name = path, path = path, sha = "new-sha"))
+
+        override suspend fun getLatestRelease(owner: String, repo: String): GitHubRelease =
+            GitHubRelease(
+                tagName = "v1.2.0",
+                name = "Repo Guardian v1.2.0",
+                body = "### What's New\n- On-device LLM inference speedups\n- Direct in-app GGUF download\n- Automated in-app update installer",
+                htmlUrl = "https://github.com/$owner/$repo/releases/tag/v1.2.0",
+                assets = listOf(
+                    ReleaseAsset(
+                        name = "RepoGuardian-v1.2.0.apk",
+                        size = 38 * 1024 * 1024L,
+                        browserDownloadUrl = "https://github.com/$owner/$repo/releases/download/v1.2.0/RepoGuardian-v1.2.0.apk",
+                        contentType = "application/vnd.android.package-archive"
+                    )
+                )
+            )
     }
 
     @Test
@@ -373,6 +389,23 @@ class MainActivity : ComponentActivity() { /* real code */ }
         val error = result as ApiResult.Error
         assertEquals(404, error.code)
         assertTrue(error.message.contains("404"))
+    }
+
+    @Test
+    fun testGitHubRepositoryGetLatestRelease() = runBlocking {
+        val fakeApi = FakeGitHubDataApi()
+        val repository = GitHubRepository(fakeApi)
+
+        val result = repository.getLatestRelease("octocat", "Repo-Guardian")
+        assertTrue("getLatestRelease must succeed", result is ApiResult.Success)
+
+        val release = (result as ApiResult.Success).data
+        assertEquals("v1.2.0", release.tagName)
+        assertEquals("1.2.0", release.versionName)
+        assertNotNull("apkAsset should be present", release.apkAsset)
+        assertEquals("RepoGuardian-v1.2.0.apk", release.apkAsset?.name)
+        assertTrue(release.apkAsset?.browserDownloadUrl?.endsWith(".apk") == true)
+        assertEquals("38.0 MB", release.apkAsset?.sizeFormatted)
     }
 }
 

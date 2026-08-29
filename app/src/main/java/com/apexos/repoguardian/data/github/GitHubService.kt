@@ -133,5 +133,11 @@ interface GitHubDataApi {
         @Path("path", encoded = true) path: String,
         @Body body: UpdateFileRequest
     ): FileCommitResponse
+
+    @GET("repos/{owner}/{repo}/releases/latest")
+    suspend fun getLatestRelease(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String
+    ): GitHubRelease
 }
 
