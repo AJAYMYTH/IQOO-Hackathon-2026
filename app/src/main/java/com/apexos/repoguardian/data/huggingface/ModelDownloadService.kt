@@ -166,55 +166,98 @@ class ModelDownloadService : Service() {
         content: String,
         progress: Int,
         indeterminate: Boolean
-    ) = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle(title)
-        .setContentText(content)
-        .setSmallIcon(com.apexos.repoguardian.R.drawable.ic_notification)
-        .setColor(0xFF10B981.toInt())
-        .setProgress(100, progress, indeterminate)
-        .setOngoing(true)
-        .setOnlyAlertOnce(true)
-        .setContentIntent(createContentIntent())
-        .addAction(
-            android.R.drawable.ic_menu_close_clear_cancel,
-            "Cancel",
-            createCancelPendingIntent()
-        )
-        .build()
+    ): android.app.Notification {
+        val largeIcon = try {
+            android.graphics.BitmapFactory.decodeResource(resources, com.apexos.repoguardian.R.drawable.app_logo_black)
+        } catch (e: Exception) {
+            null
+        }
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(content)
+            .setSmallIcon(com.apexos.repoguardian.R.drawable.ic_notification)
+            .setColor(0xFF10B981.toInt())
+            .setProgress(100, progress, indeterminate)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(createContentIntent())
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Cancel",
+                createCancelPendingIntent()
+            )
+
+        if (largeIcon != null) {
+            builder.setLargeIcon(largeIcon)
+        }
+
+        return builder.build()
+    }
 
     private fun showCompletedNotification(modelName: String, filename: String) {
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        val largeIcon = try {
+            android.graphics.BitmapFactory.decodeResource(resources, com.apexos.repoguardian.R.drawable.app_logo_black)
+        } catch (e: Exception) {
+            null
+        }
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("✓ Download Complete")
             .setContentText("$modelName is ready and loaded for AI code review")
             .setSmallIcon(com.apexos.repoguardian.R.drawable.ic_notification)
             .setColor(0xFF10B981.toInt())
             .setAutoCancel(true)
             .setContentIntent(createContentIntent())
-            .build()
-        notificationManager.notify(NOTIFICATION_ID + 1, notification)
+
+        if (largeIcon != null) {
+            builder.setLargeIcon(largeIcon)
+        }
+
+        notificationManager.notify(NOTIFICATION_ID + 1, builder.build())
     }
 
     private fun showErrorNotification(modelName: String, error: String) {
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        val largeIcon = try {
+            android.graphics.BitmapFactory.decodeResource(resources, com.apexos.repoguardian.R.drawable.app_logo_black)
+        } catch (e: Exception) {
+            null
+        }
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Download Failed: $modelName")
             .setContentText(error)
             .setSmallIcon(com.apexos.repoguardian.R.drawable.ic_notification)
             .setColor(0xFFEF4444.toInt())
             .setAutoCancel(true)
             .setContentIntent(createContentIntent())
-            .build()
-        notificationManager.notify(NOTIFICATION_ID + 2, notification)
+
+        if (largeIcon != null) {
+            builder.setLargeIcon(largeIcon)
+        }
+
+        notificationManager.notify(NOTIFICATION_ID + 2, builder.build())
     }
 
     private fun showCancelledNotification(modelName: String) {
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        val largeIcon = try {
+            android.graphics.BitmapFactory.decodeResource(resources, com.apexos.repoguardian.R.drawable.app_logo_black)
+        } catch (e: Exception) {
+            null
+        }
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Download Cancelled")
             .setContentText("Download for $modelName was stopped")
             .setSmallIcon(com.apexos.repoguardian.R.drawable.ic_notification)
             .setColor(0xFF9CA3AF.toInt())
             .setAutoCancel(true)
-            .build()
-        notificationManager.notify(NOTIFICATION_ID + 3, notification)
+
+        if (largeIcon != null) {
+            builder.setLargeIcon(largeIcon)
+        }
+
+        notificationManager.notify(NOTIFICATION_ID + 3, builder.build())
     }
 
     private fun createContentIntent(): PendingIntent {
