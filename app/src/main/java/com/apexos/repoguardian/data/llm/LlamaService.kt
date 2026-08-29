@@ -648,8 +648,12 @@ class LlamaService @Inject constructor(
     }
 
     fun unloadSync() {
-        unloadInternal()
-        _modelState.value = ModelState.NotLoaded
+        try {
+            unloadInternal()
+            _modelState.value = ModelState.NotLoaded
+        } catch (e: Throwable) {
+            AppLogger.e(TAG, "Error during unloadSync", e)
+        }
     }
 
     private fun unloadInternal() {

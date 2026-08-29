@@ -238,12 +238,74 @@ fun ReviewScreen(
             // Review results
             uiState.reviewResult?.let { review ->
                 item {
-                    Text(
-                        text = "AI Review Findings",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = BrandOnBg
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "AI Review Findings",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = BrandOnBg
+                        )
+
+                        review.metrics?.let { metrics ->
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = BrandSurfaceHigh,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Bolt,
+                                        contentDescription = null,
+                                        tint = BrandEmeraldLight,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "${metrics.formattedDuration} • ${metrics.formattedSpeed}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = BrandEmeraldLight,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                review.metrics?.let { metrics ->
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = BrandSurfaceHigh,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Inference Engine: ${metrics.backend}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BrandOnBgMuted
+                                )
+                                Text(
+                                    text = "${metrics.tokenCount} tokens generated",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BrandGreige
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // Summary
