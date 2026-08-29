@@ -57,46 +57,25 @@ fun ChatScreen(
 
     val isImeVisible = WindowInsets.isImeVisible
 
-    // Track whether the user is at the bottom of the list
-    val isAtBottom by remember {
-        derivedStateOf {
-            val visibleItems = listState.layoutInfo.visibleItemsInfo
-            if (visibleItems.isEmpty()) return@derivedStateOf true
-            val lastVisibleIndex = visibleItems.last().index
-            val totalItems = listState.layoutInfo.totalItemsCount
-            lastVisibleIndex >= totalItems - 1
-        }
-    }
-
-    var userScrolledUp by remember { mutableStateOf(false) }
-
-    // Detect user manual scroll interaction
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress) {
-            userScrolledUp = !isAtBottom
-        }
-    }
-
-    // Auto-scroll when new messages are added or when user sends message
-    LaunchedEffect(uiState.messages.size) {
-        userScrolledUp = false
-        if (uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.size - 1)
-        }
-    }
-
-    // Auto-scroll smoothly during live AI streaming responses (without forcing if user scrolled up)
-    val lastMessageContent = uiState.messages.lastOrNull()?.content ?: ""
-    LaunchedEffect(lastMessageContent, uiState.isGenerating) {
-        if (uiState.isGenerating && !userScrolledUp && !listState.isScrollInProgress) {
+    // Auto-scroll when messages update or streaming content grows
+    val lastMessageContentLength = uiState.messages.lastOrNull()?.content?.length ?: 0
+    LaunchedEffect(uiState.messages.size, lastMessageContentLength, uiState.isGenerating) {
+        if (uiState.messages.isNotEmpty() && uiState.isGenerating) {
             val targetIndex = (uiState.messages.size - 1).coerceAtLeast(0)
             listState.scrollToItem(targetIndex)
         }
     }
 
+    // Auto-scroll when new messages are added
+    LaunchedEffect(uiState.messages.size) {
+        if (uiState.messages.isNotEmpty()) {
+            listState.animateScrollToItem(uiState.messages.size - 1)
+        }
+    }
+
     // Auto-scroll when IME keyboard opens
     LaunchedEffect(isImeVisible) {
-        if (!userScrolledUp && uiState.messages.isNotEmpty()) {
+        if (uiState.messages.isNotEmpty()) {
             listState.animateScrollToItem(uiState.messages.size - 1)
         }
     }

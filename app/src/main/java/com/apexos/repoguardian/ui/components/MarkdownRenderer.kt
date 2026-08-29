@@ -2,8 +2,11 @@ package com.apexos.repoguardian.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
@@ -36,6 +39,7 @@ sealed class MarkdownBlock {
     data class Numbered(val number: String, val text: String) : MarkdownBlock()
     data class Blockquote(val text: String) : MarkdownBlock()
     data class Code(val language: String, val code: String) : MarkdownBlock()
+    data class Table(val headers: List<String>, val rows: List<List<String>>) : MarkdownBlock()
 }
 
 @Composable
@@ -216,7 +220,8 @@ fun MarkdownContent(
                             .fillMaxWidth()
                             .padding(vertical = 4.dp),
                         shape = RoundedCornerShape(10.dp),
-                        colors = CardDefaults.cardColors(containerColor = CodeBackground)
+                        colors = CardDefaults.cardColors(containerColor = CodeBackground),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Row(
@@ -241,16 +246,33 @@ fun MarkdownContent(
                                     )
                                 }
 
-                                IconButton(
-                                    onClick = { onCopyCode(block.code) },
-                                    modifier = Modifier.size(28.dp)
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color.White.copy(alpha = 0.15f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { onCopyCode(block.code) }
                                 ) {
-                                    Icon(
-                                        Icons.Default.ContentCopy,
-                                        contentDescription = "Copy Code",
-                                        tint = Color.White.copy(alpha = 0.8f),
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.ContentCopy,
+                                            contentDescription = "Copy Code",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Copy Code",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 11.sp,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
                                 }
                             }
 
@@ -259,21 +281,147 @@ fun MarkdownContent(
                                 modifier = Modifier.padding(vertical = 6.dp)
                             )
 
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                            ) {
+                                SelectionContainer {
+                                    Text(
+                                        text = block.code,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 12.sp,
+                                            lineHeight = 17.sp
+                                        ),
+                                        color = Color.White.copy(alpha = 0.95f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                is MarkdownBlock.Table -> {
+                    MarkdownTable(
+                        table = block,
+                        textColor = textColor
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownTable(
+    table: MarkdownBlock.Table,
+    textColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(8.dp)
+        ) {
+            Column {
+                // Header Row
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    table.headers.forEachIndexed { index, header ->
+                        Box(
+                            modifier = Modifier
+                                .widthIn(min = 100.dp, max = 240.dp)
+                                .padding(horizontal = 8.dp)
+                        ) {
                             Text(
-                                text = block.code,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp,
-                                    lineHeight = 17.sp
-                                ),
-                                color = Color.White.copy(alpha = 0.95f)
+                                text = buildAnnotatedMarkdown(header, MaterialTheme.colorScheme.primary),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
+                    }
+                }
+
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+
+                // Data Rows
+                table.rows.forEachIndexed { rowIndex, row ->
+                    val bg = if (rowIndex % 2 == 1) {
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.25f)
+                    } else {
+                        Color.Transparent
+                    }
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(bg)
+                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        table.headers.forEachIndexed { colIndex, _ ->
+                            val cellText = row.getOrNull(colIndex) ?: ""
+                            Box(
+                                modifier = Modifier
+                                    .widthIn(min = 100.dp, max = 240.dp)
+                                    .padding(horizontal = 8.dp)
+                            ) {
+                                Text(
+                                    text = buildAnnotatedMarkdown(cellText, textColor),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = textColor.copy(alpha = 0.9f)
+                                )
+                            }
+                        }
+                    }
+                    if (rowIndex < table.rows.size - 1) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                            modifier = Modifier.padding(vertical = 2.dp)
+                        )
                     }
                 }
             }
         }
     }
+}
+
+private fun isTableDivider(line: String): Boolean {
+    val trimmed = line.trim()
+    if (!trimmed.contains('-') && !trimmed.contains('|')) return false
+    val parts = trimmed.split('|').map { it.trim() }.filter { it.isNotEmpty() }
+    if (parts.isEmpty()) return false
+    return parts.all { col -> col.all { c -> c == '-' || c == ':' || c == ' ' } }
+}
+
+private fun splitTableRow(line: String): List<String> {
+    var trimmed = line.trim()
+    if (trimmed.startsWith('|')) trimmed = trimmed.substring(1)
+    if (trimmed.endsWith('|')) trimmed = trimmed.substring(0, trimmed.length - 1)
+    return trimmed.split('|').map { it.trim() }
 }
 
 fun parseMarkdown(raw: String): List<MarkdownBlock> {
@@ -315,6 +463,22 @@ fun parseMarkdown(raw: String): List<MarkdownBlock> {
             }
             blocks.add(MarkdownBlock.Code(lang, codeLines.joinToString("\n")))
             i++
+            continue
+        }
+
+        // Table detection
+        if (line.contains('|') && i + 1 < lines.size && isTableDivider(lines[i + 1])) {
+            val headers = splitTableRow(line)
+            val rows = mutableListOf<List<String>>()
+            i += 2 // skip header and divider
+            while (i < lines.size && lines[i].contains('|') && lines[i].trim().isNotBlank()) {
+                val rowCells = splitTableRow(lines[i])
+                if (rowCells.isNotEmpty()) {
+                    rows.add(rowCells)
+                }
+                i++
+            }
+            blocks.add(MarkdownBlock.Table(headers, rows))
             continue
         }
 
