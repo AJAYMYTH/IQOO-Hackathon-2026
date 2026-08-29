@@ -820,12 +820,17 @@ private fun ModelFilesView(
     val hasCustomLicense = selected.tags.any { it.contains("license:other", ignoreCase = true) || it.contains("license:non-commercial", ignoreCase = true) }
     val hasNotice = isGated || hasCustomLicense
 
+    // Find recommended standalone quantization (e.g. Q4_K_M or lowest standalone GGUF)
+    val recommendedFile = uiState.modelFiles.firstOrNull { it.quantType?.contains("Q4_K") == true && !it.isShard }
+        ?: uiState.modelFiles.firstOrNull { !it.isShard }
+        ?: uiState.modelFiles.firstOrNull()
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 80.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Model Header Card with Direct Web Download Option
+        // Model Header Card with Direct In-App Download Option
         item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -870,23 +875,92 @@ private fun ModelFilesView(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Primary Web Actions Row (Always Available)
+                    // Primary In-App Download Actions Row
+                    val isModelDownloadingAny = uiState.downloadingFilename != null && uiState.modelFiles.any { it.filename == uiState.downloadingFilename }
+                    val activeDownloadedModel = uiState.downloadedModels.firstOrNull { dm -> uiState.modelFiles.any { it.filename == dm.name } }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Button(
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(hfTreeUrl))
-                                context.startActivity(intent)
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = OnEmerald)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Download via Web", color = OnEmerald, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
+                        if (recommendedFile != null) {
+                            val isRecDownloaded = uiState.downloadedModels.any { it.name == recommendedFile.filename }
+                            val downloadedRecFile = uiState.downloadedModels.firstOrNull { it.name == recommendedFile.filename }
+                            val isRecActive = isRecDownloaded && downloadedRecFile != null && !uiState.activeModelPath.isNullOrBlank() && downloadedRecFile.absolutePath == uiState.activeModelPath
+                            val isRecDownloading = uiState.downloadingFilename == recommendedFile.filename
+
+                            when {
+                                isRecActive -> {
+                                    OutlinedButton(
+                                        onClick = { downloadedRecFile?.let { viewModel.loadAndActivateModel(it) } },
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmeraldLight.copy(alpha = 0.4f)),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = BrandEmeraldLight),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Active Model", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
+                                    }
+                                }
+                                isRecDownloaded -> {
+                                    Button(
+                                        onClick = { downloadedRecFile?.let { viewModel.loadAndActivateModel(it) } },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp), tint = OnEmerald)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Load ${recommendedFile.quantType ?: "Model"}", color = OnEmerald, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
+                                    }
+                                }
+                                isRecDownloading -> {
+                                    Button(
+                                        onClick = {},
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = BrandSurfaceElev),
+                                        modifier = Modifier.weight(1f),
+                                        enabled = false
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(14.dp),
+                                            color = BrandEmeraldLight,
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        val pct = ((uiState.downloadProgress?.progressPercent ?: 0f) * 100).toInt()
+                                        Text("Downloading ($pct%)...", color = BrandOnBg, fontSize = 12.sp)
+                                    }
+                                }
+                                else -> {
+                                    Button(
+                                        onClick = { viewModel.downloadFile(selected.id, recommendedFile.filename) },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = OnEmerald)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        val label = if (recommendedFile.quantType != null) "Download ${recommendedFile.quantType}" else "Download Recommended"
+                                        Text(label, color = OnEmerald, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
+                                    }
+                                }
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(hfTreeUrl))
+                                    context.startActivity(intent)
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = OnEmerald)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Browse Files on HF", color = OnEmerald, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
+                            }
                         }
 
                         OutlinedButton(
@@ -902,6 +976,15 @@ private fun ModelFilesView(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("HF Page", fontSize = 12.sp)
                         }
+                    }
+
+                    // Show in-app progress bar in header when downloading
+                    if (isModelDownloadingAny && uiState.downloadProgress != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        DownloadProgressBar(
+                            progress = uiState.downloadProgress,
+                            onCancel = { viewModel.cancelDownload() }
+                        )
                     }
                 }
             }
@@ -931,8 +1014,8 @@ private fun ModelFilesView(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = if (isGated) "This model repository may require accepting terms on Hugging Face before download. You can still download directly or proceed through the browser."
-                                else "This model includes custom licensing. Please ensure usage complies with the repository license.",
+                                text = if (isGated) "This model repository may require accepting terms on Hugging Face before download. You can download directly inside the app; if Hugging Face rejects access, accept the repository terms on their website."
+                                else "This model includes custom licensing. Please ensure usage complies with the repository terms.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = BrandOnBgMuted,
                                 fontSize = 11.5.sp
@@ -974,7 +1057,7 @@ private fun ModelFilesView(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator(color = BrandEmerald, strokeWidth = 2.5.dp)
                             Spacer(Modifier.height(12.dp))
-                            Text("Fetching quantization files from Hugging Face...", style = MaterialTheme.typography.bodySmall, color = BrandOnBgMuted)
+                            Text("Discovering GGUF quantization files from Hugging Face...", style = MaterialTheme.typography.bodySmall, color = BrandOnBgMuted)
                         }
                     }
                 }
@@ -994,14 +1077,14 @@ private fun ModelFilesView(
                             Icon(Icons.Default.LayersClear, contentDescription = null, tint = BrandOnBgSubtle, modifier = Modifier.size(36.dp))
                             Spacer(modifier = Modifier.height(10.dp))
                             Text(
-                                text = "No Direct GGUF Files (≤ 4GB) in Root",
+                                text = "No GGUF Files Discovered in Repository",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = BrandOnBg
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "This repository may contain larger quantizations (>4GB), non-GGUF weights, or requires downloading directly from the Hugging Face web repository.",
+                                text = "This repository might store weights in SafeTensors or PyTorch format instead of GGUF, or all files might be restricted.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = BrandOnBgMuted,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -1009,32 +1092,17 @@ private fun ModelFilesView(
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            Button(
-                                onClick = {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(hfTreeUrl))
-                                    context.startActivity(intent)
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
-                            ) {
-                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = OnEmerald)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Download via Hugging Face Web", color = OnEmerald, fontWeight = FontWeight.SemiBold)
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
                             val modelShortName = selected.id.substringAfterLast('/').replace("-GGUF", "", ignoreCase = true)
-                            OutlinedButton(
+                            Button(
                                 onClick = {
                                     viewModel.searchWithQuery("$modelShortName gguf")
                                 },
                                 shape = RoundedCornerShape(10.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
                             ) {
-                                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp), tint = OnEmerald)
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Search Alternative GGUF Quants", color = BrandOnBg, fontSize = 12.sp)
+                                Text("Search Community GGUF Quantizations", color = OnEmerald, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -1119,6 +1187,20 @@ private fun ModelFileItem(
                                     text = quant,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = BrandEmeraldLight,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        if (file.isShard) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = BrandSurfaceElev
+                            ) {
+                                Text(
+                                    text = "Split Part",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BrandGreige,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }

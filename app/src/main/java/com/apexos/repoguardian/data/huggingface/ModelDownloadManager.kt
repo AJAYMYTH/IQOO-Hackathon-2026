@@ -72,10 +72,14 @@ class ModelDownloadManager @Inject constructor(
 
     suspend fun listGgufFiles(modelId: String): List<HfModelFile> {
         return try {
-            huggingFaceApi.listModelFiles(modelId)
+            val allFiles = huggingFaceApi.listModelFiles(modelId)
+            allFiles
                 .filter { it.isGguf }
-                .filter { (it.size ?: 0) <= MAX_MODEL_SIZE_BYTES }
-                .sortedBy { it.size }
+                .sortedWith(
+                    compareBy<HfModelFile> { it.isShard }
+                        .thenBy { it.size ?: 0L }
+                        .thenBy { it.filename }
+                )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to list files for $modelId", e)
             emptyList()
@@ -104,6 +108,7 @@ class ModelDownloadManager @Inject constructor(
 
             if (!response.isSuccessful) {
                 val errorMsg = when (response.code) {
+                    401, 403 -> "Access restricted (HTTP ${response.code}). This repository requires Hugging Face authentication or license agreement."
                     404 -> "Model file not found on Hugging Face (404)"
                     429 -> "Rate limit reached. Please wait a few moments (429)"
                     500, 502, 503 -> "Hugging Face server temporarily unavailable (${response.code})"

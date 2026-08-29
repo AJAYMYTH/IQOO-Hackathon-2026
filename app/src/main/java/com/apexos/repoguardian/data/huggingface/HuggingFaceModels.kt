@@ -16,14 +16,18 @@ data class HfModelSearchResult(
 
 @JsonClass(generateAdapter = true)
 data class HfModelFile(
-    @Json(name = "rfilename") val filename: String,
-    val size: Long? = null // bytes
+    @Json(name = "path") val path: String? = null,
+    @Json(name = "rfilename") val rfilename: String? = null,
+    val size: Long? = null,
+    val type: String? = null
 ) {
+    val filename: String get() = (path ?: rfilename ?: "").substringAfterLast('/')
     val sizeInMb: Long get() = (size ?: 0) / (1024 * 1024)
     val sizeInGb: Double get() = (size ?: 0).toDouble() / (1024.0 * 1024.0 * 1024.0)
     val isGguf: Boolean get() = filename.endsWith(".gguf", ignoreCase = true)
+    val isShard: Boolean get() = filename.contains("-0000", ignoreCase = true) || filename.contains("-of-0000", ignoreCase = true)
     val quantType: String? get() {
-        val regex = Regex("(?i)(q[0-9]_[a-z0-9_]+|f16|f32|q[0-9]+)", RegexOption.IGNORE_CASE)
+        val regex = Regex("(?i)(q[0-9]_[a-z0-9_]+|f16|f32|q[0-9]+_[0-9]|q[0-9]+_k[a-z0-9_]*|bf16|fp16|q[0-9]+)", RegexOption.IGNORE_CASE)
         return regex.find(filename.lowercase())?.value?.uppercase()
     }
 }
