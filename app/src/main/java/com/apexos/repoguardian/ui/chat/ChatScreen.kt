@@ -4,7 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -56,9 +57,46 @@ fun ChatScreen(
 
     val isImeVisible = WindowInsets.isImeVisible
 
-    // Auto-scroll to newest message
-    LaunchedEffect(uiState.messages.size, uiState.isGenerating, isImeVisible) {
+    // Track whether the user is at the bottom of the list
+    val isAtBottom by remember {
+        derivedStateOf {
+            val visibleItems = listState.layoutInfo.visibleItemsInfo
+            if (visibleItems.isEmpty()) return@derivedStateOf true
+            val lastVisibleIndex = visibleItems.last().index
+            val totalItems = listState.layoutInfo.totalItemsCount
+            lastVisibleIndex >= totalItems - 1
+        }
+    }
+
+    var userScrolledUp by remember { mutableStateOf(false) }
+
+    // Detect user manual scroll interaction
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            userScrolledUp = !isAtBottom
+        }
+    }
+
+    // Auto-scroll when new messages are added or when user sends message
+    LaunchedEffect(uiState.messages.size) {
+        userScrolledUp = false
         if (uiState.messages.isNotEmpty()) {
+            listState.animateScrollToItem(uiState.messages.size - 1)
+        }
+    }
+
+    // Auto-scroll smoothly during live AI streaming responses (without forcing if user scrolled up)
+    val lastMessageContent = uiState.messages.lastOrNull()?.content ?: ""
+    LaunchedEffect(lastMessageContent, uiState.isGenerating) {
+        if (uiState.isGenerating && !userScrolledUp && !listState.isScrollInProgress) {
+            val targetIndex = (uiState.messages.size - 1).coerceAtLeast(0)
+            listState.scrollToItem(targetIndex)
+        }
+    }
+
+    // Auto-scroll when IME keyboard opens
+    LaunchedEffect(isImeVisible) {
+        if (!userScrolledUp && uiState.messages.isNotEmpty()) {
             listState.animateScrollToItem(uiState.messages.size - 1)
         }
     }
@@ -405,7 +443,7 @@ fun ChatScreen(
                                         inputText = ""
                                     }
                                 },
-                                enabled = uiState.isGenerating || inputText.isNotBlank(),
+                                enabled = inputText.isNotBlank() || uiState.isGenerating,
                                 modifier = Modifier
                                     .size(46.dp)
                                     .clip(CircleShape)
@@ -450,12 +488,19 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 14.dp),
-            contentPadding = PaddingValues(vertical = 14.dp),
+            contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            items(uiState.messages) { message ->
+            val nonBlankMessages = uiState.messages.filter { it.content.isNotBlank() || it.isUser }
+
+            items(nonBlankMessages) { message ->
+                val isStreaming = uiState.isGenerating &&
+                        !message.isUser &&
+                        message.id == uiState.messages.lastOrNull()?.id
+
                 MessageBubble(
                     message = message,
+                    isStreaming = isStreaming,
                     onCopyCode = { code ->
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                         val clip = ClipData.newPlainText("Code", code)
@@ -471,7 +516,8 @@ fun ChatScreen(
                 )
             }
 
-            if (uiState.isGenerating) {
+            // Show clean minimal thinking indicator while AI is preparing first response
+            if (uiState.isGenerating && uiState.messages.lastOrNull()?.content.isNullOrBlank()) {
                 item {
                     AiThinkingIndicator()
                 }
@@ -489,6 +535,7 @@ fun ChatScreen(
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
+    isStreaming: Boolean = false,
     onCopyCode: (String) -> Unit,
     onCopyResponse: (String) -> Unit
 ) {
@@ -508,7 +555,7 @@ private fun MessageBubble(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Default.Memory,
+                    Icons.Outlined.AutoAwesome,
                     contentDescription = "AI",
                     modifier = Modifier.size(16.dp),
                     tint = BrandEmeraldLight
@@ -526,7 +573,7 @@ private fun MessageBubble(
             ),
             color = if (isUser) BrandSurfaceElev else BrandSurface,
             border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder),
-            modifier = Modifier.widthIn(max = 340.dp)
+            modifier = Modifier.widthIn(max = 330.dp)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 if (isUser) {
@@ -542,8 +589,33 @@ private fun MessageBubble(
                         onCopyCode = onCopyCode
                     )
 
-                    if (message.content.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(10.dp))
+                    if (isStreaming) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val infiniteTransition = rememberInfiniteTransition(label = "cursorPulse")
+                            val cursorAlpha by infiniteTransition.animateFloat(
+                                initialValue = 0.2f,
+                                targetValue = 1f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(450, easing = LinearEasing),
+                                    repeatMode = RepeatMode.Reverse
+                                ),
+                                label = "cursor"
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 6.dp, height = 12.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(BrandEmeraldLight.copy(alpha = cursorAlpha))
+                            )
+                        }
+                    }
+
+                    if (message.content.isNotBlank() && !isStreaming) {
+                        Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,

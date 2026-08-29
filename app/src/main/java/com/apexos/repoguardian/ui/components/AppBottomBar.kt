@@ -1,30 +1,30 @@
 package com.apexos.repoguardian.ui.components
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.Memory
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -39,10 +39,10 @@ enum class NavigationTab(
     val label: String,
     val icon: ImageVector
 ) {
-    DASHBOARD(Routes.DASHBOARD, "Dashboard", Icons.Default.Dashboard),
-    CHAT(Routes.CHAT, "AI Chat", Icons.AutoMirrored.Filled.Chat),
-    MODELS(Routes.MODEL_BROWSER, "Models", Icons.Default.Memory),
-    SETTINGS(Routes.SETTINGS, "Settings", Icons.Default.Settings)
+    DASHBOARD(Routes.DASHBOARD, "Dashboard", Icons.Outlined.Dashboard),
+    CHAT(Routes.CHAT, "AI Chat", Icons.AutoMirrored.Outlined.Chat),
+    MODELS(Routes.MODEL_BROWSER, "Models", Icons.Outlined.Memory),
+    SETTINGS(Routes.SETTINGS, "Settings", Icons.Outlined.Settings)
 }
 
 @Composable
@@ -55,29 +55,23 @@ fun AppBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(start = 20.dp, end = 20.dp, bottom = 12.dp, top = 4.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
-        // Floating Frosted Glass Dock Container
+        // Floating Pill-Shaped Container
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(68.dp)
-                .shadow(
-                    elevation = 16.dp,
-                    shape = RoundedCornerShape(36.dp),
-                    spotColor = BrandEmerald.copy(alpha = 0.25f),
-                    ambientColor = Color.Black.copy(alpha = 0.6f)
-                ),
-            shape = RoundedCornerShape(36.dp),
-            color = GlassBackgroundElev,
-            border = BorderStroke(1.dp, GlassBorder)
+                .height(60.dp),
+            shape = RoundedCornerShape(30.dp),
+            color = BrandSurfaceElev,
+            border = BorderStroke(1.dp, BrandBorder)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.SpaceAround,
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 NavigationTab.values().forEach { tab ->
@@ -85,32 +79,26 @@ fun AppBottomBar(
 
                     val iconTint by animateColorAsState(
                         targetValue = if (isSelected) BrandEmeraldLight else BrandOnBgSubtle,
-                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         label = "tab_icon_tint"
                     )
 
                     val textColor by animateColorAsState(
-                        targetValue = if (isSelected) Color.White else BrandOnBgSubtle,
+                        targetValue = if (isSelected) BrandEmeraldLight else BrandOnBgSubtle,
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         label = "tab_text_color"
                     )
 
-                    val floatOffset by animateDpAsState(
-                        targetValue = if (isSelected) (-3).dp else 0.dp,
-                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
-                        label = "float_offset"
+                    val activeBgColor by animateColorAsState(
+                        targetValue = if (isSelected) BrandEmerald.copy(alpha = 0.12f) else Color.Transparent,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                        label = "tab_active_bg"
                     )
 
-                    val iconScale by animateFloatAsState(
-                        targetValue = if (isSelected) 1.14f else 1.0f,
-                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-                        label = "icon_scale"
-                    )
-
-                    val activeBgAlpha by animateFloatAsState(
-                        targetValue = if (isSelected) 1f else 0f,
-                        animationSpec = tween(220, easing = EaseOutCubic),
-                        label = "active_bg_alpha"
+                    val activeBorderColor by animateColorAsState(
+                        targetValue = if (isSelected) BrandEmeraldLight.copy(alpha = 0.25f) else Color.Transparent,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                        label = "tab_active_border"
                     )
 
                     val interactionSource = remember { MutableInteractionSource() }
@@ -118,8 +106,10 @@ fun AppBottomBar(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .offset(y = floatOffset)
-                            .clip(RoundedCornerShape(22.dp))
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(activeBgColor)
+                            .border(1.dp, activeBorderColor, RoundedCornerShape(24.dp))
                             .clickable(
                                 interactionSource = interactionSource,
                                 indication = null
@@ -133,52 +123,28 @@ fun AppBottomBar(
                                         restoreState = true
                                     }
                                 }
-                            }
-                            .padding(vertical = 4.dp),
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                            // Floating Icon with glowing active pill
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .scale(iconScale)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isSelected) BrandEmeraldMuted.copy(alpha = 0.55f * activeBgAlpha)
-                                        else Color.Transparent
-                                    )
-                                    .then(
-                                        if (isSelected) {
-                                            Modifier.border(
-                                                1.dp,
-                                                BrandEmeraldLight.copy(alpha = 0.35f * activeBgAlpha),
-                                                CircleShape
-                                            )
-                                        } else Modifier
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = tab.icon,
-                                    contentDescription = tab.label,
-                                    tint = iconTint,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
+                            Icon(
+                                imageVector = tab.icon,
+                                contentDescription = tab.label,
+                                tint = iconTint,
+                                modifier = Modifier.size(20.dp)
+                            )
                             Spacer(Modifier.height(2.dp))
-
                             Text(
                                 text = tab.label,
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 10.5.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                                 ),
-                                color = textColor
+                                color = textColor,
+                                maxLines = 1
                             )
                         }
                     }
