@@ -25,6 +25,8 @@
 
 By executing lightweight Large Language Models directly on mobile hardware via `llama.cpp` (with ARM NEON, Adreno GPU OpenCL, and Qualcomm Hexagon NPU acceleration), Repo Guardian inspects incoming commits, highlights bugs, security vulnerabilities, and anti-patterns, generates structured fixes, and opens GitHub Pull Requests — **completely offline without sending proprietary code diffs to third-party cloud servers**.
 
+> 📖 **Team & Developer Guide:** For comprehensive instructions on environment setup (JDK 17/NDK), compiling Gradle APKs, deploying onto physical Android devices via ADB, downloading GGUF models, and testing all features, check out the **[Team Build, Device Setup & Testing Guide](TEAM_BUILD_AND_TEST_GUIDE.md)**.
+
 ---
 
 ## ✨ Key Features
