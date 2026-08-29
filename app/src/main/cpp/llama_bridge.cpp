@@ -59,12 +59,12 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_createContext(
     int n_threads = std::max(1, std::min(6, (int)std::thread::hardware_concurrency()));
 
     llama_context_params ctx_params = llama_context_default_params();
-    ctx_params.n_ctx = contextSize > 0 ? contextSize : 2048;
+    ctx_params.n_ctx = contextSize > 0 ? contextSize : 4096;
     ctx_params.n_batch = 512;
     ctx_params.n_ubatch = 512;
     ctx_params.n_threads = n_threads;
     ctx_params.n_threads_batch = n_threads;
-    ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_DISABLED;
+    ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
 
     llama_context *ctx = llama_init_from_model(model, ctx_params);
     if (ctx == nullptr) {
@@ -72,7 +72,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_createContext(
         return 0;
     }
 
-    LOGI("Context created successfully with size %d, threads: %d", ctx_params.n_ctx, n_threads);
+    LOGI("Context created successfully with size %d, threads: %d, flash_attn: enabled", ctx_params.n_ctx, n_threads);
     return reinterpret_cast<jlong>(ctx);
 }
 
@@ -86,6 +86,8 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
     if (ctx == nullptr) {
         return env->NewStringUTF("Error: context handle is null");
     }
+
+    auto t_start = std::chrono::high_resolution_clock::now();
 
     const llama_model *model = llama_get_model(ctx);
     const llama_vocab *vocab = llama_model_get_vocab(model);
@@ -113,6 +115,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
     llama_memory_clear(llama_get_memory(ctx), false);
 
     // Prompt evaluation using explicit batch positions and logits on last token only
+    auto t_prefill_start = std::chrono::high_resolution_clock::now();
     llama_batch batch = llama_batch_init(512, 0, 1);
     for (size_t b = 0; b < prompt_tokens.size(); b += 512) {
         int32_t n_eval = std::min((int32_t)(prompt_tokens.size() - b), 512);
@@ -132,6 +135,8 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
             return env->NewStringUTF("Error: decode failed during prompt evaluation");
         }
     }
+    auto t_prefill_end = std::chrono::high_resolution_clock::now();
+    long long prefill_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_prefill_end - t_prefill_start).count();
 
     // Init Sampler
     llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
@@ -142,8 +147,10 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
     std::string result;
     int max_gen = maxTokens > 0 ? maxTokens : 1024;
     int n_cur = (int)prompt_tokens.size();
-    LOGI("Starting on-device generation with %d prompt tokens, max_gen: %d", (int)prompt_tokens.size(), max_gen);
+    int tokens_generated = 0;
+    LOGI("Starting on-device generation: %zu prompt tokens (prefill: %lld ms), max_gen: %d", prompt_tokens.size(), prefill_ms, max_gen);
 
+    auto t_gen_start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < max_gen; i++) {
         llama_token new_token_id = llama_sampler_sample(smpl, ctx, -1);
         if (llama_vocab_is_eog(vocab, new_token_id)) {
@@ -155,6 +162,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
         int n = llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
         if (n > 0) {
             result.append(buf, n);
+            tokens_generated++;
         }
 
         batch.n_tokens = 0;
@@ -171,10 +179,17 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
             break;
         }
     }
+    auto t_end = std::chrono::high_resolution_clock::now();
 
     llama_batch_free(batch);
     llama_sampler_free(smpl);
-    LOGI("Generation finished, generated %zu characters", result.size());
+
+    long long gen_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_gen_start).count();
+    long long total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
+    double tok_per_sec = gen_ms > 0 ? ((double)tokens_generated / (gen_ms / 1000.0)) : 0.0;
+
+    LOGI("Generation finished: %d tokens in %lld ms (%.2f tok/s), total: %lld ms, chars: %zu",
+         tokens_generated, gen_ms, tok_per_sec, total_ms, result.size());
     return env->NewStringUTF(result.c_str());
 }
 
@@ -189,6 +204,8 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
         LOGE("generateStream: contextHandle is null");
         return env->NewStringUTF("Error: context handle is null");
     }
+
+    auto t_start = std::chrono::high_resolution_clock::now();
 
     jclass callbackClass = nullptr;
     jmethodID invokeMethod = nullptr;
@@ -225,6 +242,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
     llama_memory_clear(llama_get_memory(ctx), false);
 
     // Prompt evaluation using explicit batch positions and logits on last token only
+    auto t_prefill_start = std::chrono::high_resolution_clock::now();
     llama_batch batch = llama_batch_init(512, 0, 1);
     for (size_t b = 0; b < prompt_tokens.size(); b += 512) {
         int32_t n_eval = std::min((int32_t)(prompt_tokens.size() - b), 512);
@@ -244,6 +262,8 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
             return env->NewStringUTF("Error: decode failed during prompt evaluation");
         }
     }
+    auto t_prefill_end = std::chrono::high_resolution_clock::now();
+    long long prefill_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_prefill_end - t_prefill_start).count();
 
     // Init Sampler
     llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
@@ -254,8 +274,10 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
     std::string result;
     int max_gen = maxTokens > 0 ? maxTokens : 1024;
     int n_cur = (int)prompt_tokens.size();
-    LOGI("Starting streaming generation with %d prompt tokens, max_gen: %d", (int)prompt_tokens.size(), max_gen);
+    int tokens_generated = 0;
+    LOGI("Starting streaming generation: %zu prompt tokens (prefill: %lld ms), max_gen: %d", prompt_tokens.size(), prefill_ms, max_gen);
 
+    auto t_gen_start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < max_gen; i++) {
         llama_token new_token_id = llama_sampler_sample(smpl, ctx, -1);
         if (llama_vocab_is_eog(vocab, new_token_id)) {
@@ -268,6 +290,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
         if (n > 0) {
             std::string piece(buf, n);
             result.append(piece);
+            tokens_generated++;
 
             if (invokeMethod != nullptr && callback != nullptr) {
                 jstring pieceStr = env->NewStringUTF(piece.c_str());
@@ -298,13 +321,20 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
             break;
         }
     }
+    auto t_end = std::chrono::high_resolution_clock::now();
 
     if (callbackClass != nullptr) {
         env->DeleteLocalRef(callbackClass);
     }
     llama_batch_free(batch);
     llama_sampler_free(smpl);
-    LOGI("Streaming finished, generated %zu characters", result.size());
+
+    long long gen_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_gen_start).count();
+    long long total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
+    double tok_per_sec = gen_ms > 0 ? ((double)tokens_generated / (gen_ms / 1000.0)) : 0.0;
+
+    LOGI("Streaming finished: %d tokens in %lld ms (%.2f tok/s), total: %lld ms, chars: %zu",
+         tokens_generated, gen_ms, tok_per_sec, total_ms, result.size());
     return env->NewStringUTF(result.c_str());
 }
 

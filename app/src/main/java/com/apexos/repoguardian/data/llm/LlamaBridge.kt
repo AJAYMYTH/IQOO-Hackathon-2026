@@ -13,8 +13,8 @@ object LlamaBridge {
     external fun loadModel(modelPath: String, nGpuLayers: Int = 0): Long
 
     // Create inference context with given model handle
-    // contextSize: token context window (2048 is good for code review)
-    external fun createContext(modelHandle: Long, contextSize: Int = 2048): Long
+    // contextSize: token context window (4096 for deep code review and repository context)
+    external fun createContext(modelHandle: Long, contextSize: Int = 4096): Long
 
     // Generate completion from prompt, returns generated text
     // maxTokens: max tokens to generate

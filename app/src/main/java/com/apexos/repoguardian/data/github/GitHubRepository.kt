@@ -95,7 +95,8 @@ class GitHubRepository @Inject constructor(
         fixedContent: String,
         commitMessage: String,
         prTitle: String,
-        prBody: String
+        prBody: String,
+        baseBranch: String = "main"
     ): ApiResult<PullRequest> = apiCall("createFixPr($owner/$repo, file=$filePath)") {
         // 1. Create branch
         val branchName = "repoguardian/fix-${System.currentTimeMillis()}"
@@ -108,7 +109,11 @@ class GitHubRepository @Inject constructor(
         )
 
         // 2. Get current file content to get its SHA
-        val currentFile = dataApi.getFileContent(owner, repo, filePath, branchName)
+        val currentFile = try {
+            dataApi.getFileContent(owner, repo, filePath, branchName)
+        } catch (e: Exception) {
+            null
+        }
 
         // 3. Commit the fix
         val encodedContent = Base64.encodeToString(
@@ -120,7 +125,7 @@ class GitHubRepository @Inject constructor(
             UpdateFileRequest(
                 message = commitMessage,
                 content = encodedContent,
-                sha = currentFile.sha,
+                sha = currentFile?.sha,
                 branch = branchName
             )
         )
@@ -131,7 +136,7 @@ class GitHubRepository @Inject constructor(
             CreatePrRequest(
                 title = prTitle,
                 head = branchName,
-                base = "main",
+                base = baseBranch,
                 body = prBody
             )
         )
@@ -146,7 +151,8 @@ class GitHubRepository @Inject constructor(
         owner: String,
         repo: String,
         yamlContent: String,
-        workflowName: String
+        workflowName: String,
+        branch: String = "main"
     ): ApiResult<FileCommitResponse> = apiCall("commitWorkflowFile($owner/$repo, name=$workflowName)") {
         val path = ".github/workflows/$workflowName.yml"
         val encodedContent = Base64.encodeToString(
@@ -154,35 +160,23 @@ class GitHubRepository @Inject constructor(
             Base64.NO_WRAP
         )
 
-        // Try to get existing file SHA (may not exist)
-        val existingSha = try {
-            dataApi.getFileContent(owner, repo, path).sha
+        // Try to get existing file SHA (null if new file)
+        val existingSha: String? = try {
+            val fileRes = dataApi.getFileContent(owner, repo, path)
+            if (fileRes.sha.isNotBlank()) fileRes.sha else null
         } catch (e: Exception) {
-            "" // File doesn't exist yet
+            null
         }
 
-        if (existingSha.isNotEmpty()) {
-            dataApi.updateFile(
-                owner, repo, path,
-                UpdateFileRequest(
-                    message = "Add CI/CD workflow: $workflowName (via Repo Guardian)",
-                    content = encodedContent,
-                    sha = existingSha,
-                    branch = "main"
-                )
+        dataApi.updateFile(
+            owner, repo, path,
+            UpdateFileRequest(
+                message = "Add CI/CD workflow: $workflowName (via Repo Guardian)",
+                content = encodedContent,
+                sha = existingSha,
+                branch = branch
             )
-        } else {
-            // For new files, we need to create via the contents API without SHA
-            dataApi.updateFile(
-                owner, repo, path,
-                UpdateFileRequest(
-                    message = "Add CI/CD workflow: $workflowName (via Repo Guardian)",
-                    content = encodedContent,
-                    sha = "",
-                    branch = "main"
-                )
-            )
-        }
+        )
     }
 
     private fun decodeBase64ToString(rawContent: String?): String {

@@ -5,8 +5,14 @@ object PromptBuilder {
      * Build prompt for code review using real repository diff and context.
      */
     fun buildReviewPrompt(diff: String, customRules: String = "", repoContext: String = ""): String {
-        val truncatedDiff = if (diff.length > 4000) {
-            diff.take(4000) + "\n... (diff truncated for token window)"
+        val truncatedDiff = if (diff.length > 10000) {
+            val cut = diff.take(10000)
+            val lastNewline = cut.lastIndexOf('\n')
+            if (lastNewline > 8000) {
+                cut.substring(0, lastNewline) + "\n... (diff truncated at hunk boundary for token window)"
+            } else {
+                cut + "\n... (diff truncated for token window)"
+            }
         } else {
             diff
         }

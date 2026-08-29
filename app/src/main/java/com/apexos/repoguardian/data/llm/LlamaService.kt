@@ -89,17 +89,21 @@ class LlamaService @Inject constructor(
                 }
             }
 
-            // 3. Auto-discover model in common Android Download paths
-            val downloadDir = File("/sdcard/Download")
-            if (downloadDir.exists()) {
-                val sideLoaded = downloadDir.listFiles()?.filter { it.extension.equals("gguf", ignoreCase = true) && it.length() > 0 } ?: emptyList()
-                if (sideLoaded.isNotEmpty()) {
-                    val first = sideLoaded.first()
-                    preferencesManager.saveModelPath(first.absolutePath)
-                    AppLogger.i(TAG, "Auto-discovered downloaded GGUF model: ${first.name}")
-                    loadModel(first.absolutePath, 0)
-                    return@withContext
+            // 3. Auto-discover model in common Android Download paths (safely wrapped)
+            try {
+                val downloadDir = File("/sdcard/Download")
+                if (downloadDir.exists() && downloadDir.canRead()) {
+                    val sideLoaded = downloadDir.listFiles()?.filter { it.extension.equals("gguf", ignoreCase = true) && it.length() > 0 } ?: emptyList()
+                    if (sideLoaded.isNotEmpty()) {
+                        val first = sideLoaded.first()
+                        preferencesManager.saveModelPath(first.absolutePath)
+                        AppLogger.i(TAG, "Auto-discovered downloaded GGUF model: ${first.name}")
+                        loadModel(first.absolutePath, 0)
+                        return@withContext
+                    }
                 }
+            } catch (e: Throwable) {
+                AppLogger.d(TAG, "Scoped storage bypass: ${e.message}")
             }
         } catch (e: Exception) {
             AppLogger.d(TAG, "Silent auto-start skipped: ${e.message}")
@@ -107,62 +111,64 @@ class LlamaService @Inject constructor(
     }
 
     suspend fun loadModel(path: String, nGpuLayers: Int = 0) = withContext(Dispatchers.IO) {
-        loadMutex.withLock {
-            if (modelHandle != 0L && contextHandle != 0L) {
-                val currentLoadedPath = preferencesManager.getModelPath()
-                if (currentLoadedPath == path) {
-                    AppLogger.d(TAG, "Model $path is already active in memory, reusing instance.")
-                    return@withContext
+        inferenceMutex.withLock {
+            loadMutex.withLock {
+                if (modelHandle != 0L && contextHandle != 0L) {
+                    val currentLoadedPath = preferencesManager.getModelPath()
+                    if (currentLoadedPath == path) {
+                        AppLogger.d(TAG, "Model $path is already active in memory, reusing instance.")
+                        return@withContext
+                    }
+                    unloadInternal()
                 }
-                unloadInternal()
-            }
 
-            try {
-                _modelState.value = ModelState.Loading
-                AppLogger.i(TAG, "Loading GGUF model: $path (GPU layers: $nGpuLayers)")
+                try {
+                    _modelState.value = ModelState.Loading
+                    AppLogger.i(TAG, "Loading GGUF model: $path (GPU layers: $nGpuLayers)")
 
-                val file = File(path)
-                if (!file.exists()) {
-                    val err = "Model file not found at path: $path"
-                    AppLogger.e(TAG, err)
+                    val file = File(path)
+                    if (!file.exists()) {
+                        val err = "Model file not found at path: $path"
+                        AppLogger.e(TAG, err)
+                        _modelState.value = ModelState.Error(err)
+                        return@withContext
+                    }
+
+                    if (!LlamaBridge.isAvailable) {
+                        val err = "LlamaBridge native library not available in runtime"
+                        AppLogger.e(TAG, err)
+                        _modelState.value = ModelState.Error(err)
+                        return@withContext
+                    }
+
+                    modelHandle = LlamaBridge.loadModel(path, nGpuLayers)
+                    if (modelHandle == 0L) {
+                        val err = "LlamaBridge failed to load GGUF model: ${file.name}"
+                        AppLogger.e(TAG, err)
+                        _modelState.value = ModelState.Error(err)
+                        return@withContext
+                    }
+
+                    contextHandle = LlamaBridge.createContext(modelHandle, 4096)
+                    if (contextHandle == 0L) {
+                        val err = "LlamaBridge failed to create inference context for ${file.name}"
+                        AppLogger.e(TAG, err)
+                        _modelState.value = ModelState.Error(err)
+                        return@withContext
+                    }
+
+                    val info = LlamaBridge.getModelInfo(modelHandle)
+                    val desc = if (info.isNotBlank() && !info.contains("No model")) info else "Active: ${file.name}"
+                    _modelState.value = ModelState.Loaded(desc)
+                    AppLogger.i(TAG, "GGUF model loaded successfully into memory: $desc")
+                } catch (e: UnsatisfiedLinkError) {
+                    val err = "Native bridge link error: ${e.message}"
+                    AppLogger.e(TAG, err, e)
                     _modelState.value = ModelState.Error(err)
-                    return@withContext
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "Error loading model", e)
+                    _modelState.value = ModelState.Error(e.message ?: "Unknown error loading model")
                 }
-
-                if (!LlamaBridge.isAvailable) {
-                    val msg = "Active (Bridge Stubs): ${file.name}"
-                    AppLogger.w(TAG, "LlamaBridge native library not loaded in runtime")
-                    _modelState.value = ModelState.Loaded(msg)
-                    return@withContext
-                }
-
-                modelHandle = LlamaBridge.loadModel(path, nGpuLayers)
-                if (modelHandle == 0L) {
-                    val err = "LlamaBridge failed to load GGUF model: ${file.name}"
-                    AppLogger.e(TAG, err)
-                    _modelState.value = ModelState.Error(err)
-                    return@withContext
-                }
-
-                contextHandle = LlamaBridge.createContext(modelHandle, 2048)
-                if (contextHandle == 0L) {
-                    val err = "LlamaBridge failed to create inference context for ${file.name}"
-                    AppLogger.e(TAG, err)
-                    _modelState.value = ModelState.Error(err)
-                    return@withContext
-                }
-
-                val info = LlamaBridge.getModelInfo(modelHandle)
-                val desc = if (info.isNotBlank() && !info.contains("No model")) info else "Active: ${file.name}"
-                _modelState.value = ModelState.Loaded(desc)
-                AppLogger.i(TAG, "GGUF model loaded successfully into memory: $desc")
-            } catch (e: UnsatisfiedLinkError) {
-                AppLogger.w(TAG, "Native library linkage note, running with hybrid bridge fallback", e)
-                val file = File(path)
-                _modelState.value = ModelState.Loaded("Active: ${file.name}")
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Error loading model", e)
-                _modelState.value = ModelState.Error(e.message ?: "Unknown error loading model")
             }
         }
     }
@@ -171,16 +177,33 @@ class LlamaService @Inject constructor(
         if (!isLoaded()) {
             autoStartService()
         }
+        val startTime = System.currentTimeMillis()
         val prompt = PromptBuilder.buildReviewPrompt(diff, customRules, repoContext)
         val localServerUrl = preferencesManager.getLocalServerUrl().trim()
+        val backendPref = preferencesManager.getBackend().lowercase()
+        val activeBackend = when {
+            localServerUrl.isNotBlank() -> "Local Server ($localServerUrl)"
+            backendPref == "npu" -> "Snapdragon NPU (Hexagon)"
+            backendPref == "gpu" -> "Adreno GPU (Vulkan)"
+            else -> "CPU (ARM NEON)"
+        }
 
         // 1. Try Local Server if configured
         if (localServerUrl.isNotBlank()) {
             AppLogger.i(TAG, "Querying local server for code review: $localServerUrl")
             val serverResp = queryLocalServer(prompt, 1500, localServerUrl)
             if (!serverResp.isNullOrBlank()) {
-                AppLogger.i(TAG, "Received review response from local server (${serverResp.length} chars)")
-                return@withContext parseReviewResult(serverResp)
+                val elapsedMs = System.currentTimeMillis() - startTime
+                val approxTokens = serverResp.length / 4
+                val tps = if (elapsedMs > 0) (approxTokens.toDouble() / (elapsedMs / 1000.0)) else 0.0
+                val metrics = InferenceMetrics(
+                    totalTimeMs = elapsedMs,
+                    tokenCount = approxTokens,
+                    tokensPerSecond = tps,
+                    backend = activeBackend
+                )
+                AppLogger.i(TAG, "Received review response from local server (${serverResp.length} chars in ${elapsedMs}ms, ~${String.format("%.1f", tps)} tok/s)")
+                return@withContext parseReviewResult(serverResp, metrics)
             }
         }
 
@@ -188,11 +211,20 @@ class LlamaService @Inject constructor(
         if (contextHandle != 0L) {
             inferenceMutex.withLock {
                 try {
-                    AppLogger.i(TAG, "Running code review via on-device native LLM (prompt: ${prompt.length} chars)...")
+                    AppLogger.i(TAG, "Running code review via on-device native LLM (prompt: ${prompt.length} chars, backend: $activeBackend)...")
                     val response = LlamaBridge.generate(contextHandle, prompt, 1024)
                     if (response.isNotBlank() && !response.startsWith("Error:")) {
-                        AppLogger.i(TAG, "On-device native LLM review completed successfully")
-                        return@withContext parseReviewResult(response)
+                        val elapsedMs = System.currentTimeMillis() - startTime
+                        val approxTokens = response.length / 4
+                        val tps = if (elapsedMs > 0) (approxTokens.toDouble() / (elapsedMs / 1000.0)) else 0.0
+                        val metrics = InferenceMetrics(
+                            totalTimeMs = elapsedMs,
+                            tokenCount = approxTokens,
+                            tokensPerSecond = tps,
+                            backend = activeBackend
+                        )
+                        AppLogger.i(TAG, "On-device native LLM review completed successfully in ${elapsedMs}ms (~${String.format("%.1f", tps)} tok/s)")
+                        return@withContext parseReviewResult(response, metrics)
                     } else {
                         AppLogger.w(TAG, "Native LLM returned error output: $response")
                     }
@@ -520,9 +552,20 @@ class LlamaService @Inject constructor(
             .trim()
     }
 
-    fun isLoaded(): Boolean = modelHandle != 0L || _modelState.value is ModelState.Loaded
+    fun isLoaded(): Boolean {
+        return modelHandle != 0L && contextHandle != 0L
+    }
 
-    fun unload() {
+    suspend fun unload() = withContext(Dispatchers.IO) {
+        inferenceMutex.withLock {
+            loadMutex.withLock {
+                unloadInternal()
+                _modelState.value = ModelState.NotLoaded
+            }
+        }
+    }
+
+    fun unloadSync() {
         unloadInternal()
         _modelState.value = ModelState.NotLoaded
     }
@@ -538,12 +581,13 @@ class LlamaService @Inject constructor(
         }
     }
 
-    private fun parseReviewResult(response: String): ReviewResult {
+    private fun parseReviewResult(response: String, metrics: InferenceMetrics? = null): ReviewResult {
         return try {
             val jsonMatch = Regex("\\{[\\s\\S]*\\}").find(response)
             val json = jsonMatch?.value ?: response
             val adapter = moshi.adapter(ReviewResult::class.java)
-            adapter.fromJson(json) ?: ReviewResult(summary = response)
+            val parsed = adapter.fromJson(json) ?: ReviewResult(summary = response)
+            parsed.copy(metrics = metrics)
         } catch (e: Exception) {
             AppLogger.w(TAG, "Failed to parse structured JSON from AI review output, returning raw response", e)
             ReviewResult(
@@ -557,7 +601,8 @@ class LlamaService @Inject constructor(
                         description = response,
                         fix = "Apply suggested review changes"
                     )
-                )
+                ),
+                metrics = metrics
             )
         }
     }

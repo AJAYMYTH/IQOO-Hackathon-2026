@@ -9,6 +9,7 @@ import com.apexos.repoguardian.data.github.ApiResult
 import com.apexos.repoguardian.data.github.GitHubRepository
 import com.apexos.repoguardian.data.github.models.*
 import com.apexos.repoguardian.data.huggingface.ModelDownloadManager
+import com.apexos.repoguardian.data.llm.InferenceMetrics
 import com.apexos.repoguardian.data.llm.LlamaService
 import com.apexos.repoguardian.data.preferences.PreferencesManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,7 +29,8 @@ data class ChatMessage(
     val isUser: Boolean,
     val isSystem: Boolean = false,
     val timestamp: Long = System.currentTimeMillis(),
-    val repoContext: String? = null
+    val repoContext: String? = null,
+    val metrics: InferenceMetrics? = null
 )
 
 enum class PromptCategory {
@@ -449,13 +451,23 @@ $dynamicGitHubData
 
                 AppLogger.d(TAG, "Passing system context to LLM (${systemPrompt.length} chars)")
 
+                val startTime = System.currentTimeMillis()
+                var tokensCount = 0
                 val accumulatedResponse = StringBuilder()
+                val backendPref = preferencesManager.getBackend().lowercase()
+                val activeBackend = when {
+                    localServerUrl.isNotBlank() -> "Local Server ($localServerUrl)"
+                    backendPref == "npu" -> "Snapdragon NPU (Hexagon)"
+                    backendPref == "gpu" -> "Adreno GPU (Vulkan)"
+                    else -> "CPU (ARM NEON)"
+                }
 
                 llamaService.chatStream(
                     userMessage = userText.trim(),
                     systemPrompt = systemPrompt,
                     isThinkMode = _uiState.value.isThinkingModel && _uiState.value.isThinkModeEnabled
                 ).collect { token ->
+                    tokensCount++
                     accumulatedResponse.append(token)
                     val currentText = accumulatedResponse.toString()
 
@@ -469,8 +481,27 @@ $dynamicGitHubData
                     _uiState.value = _uiState.value.copy(messages = updatedMessages)
                 }
 
-                _uiState.value = _uiState.value.copy(isGenerating = false)
-                AppLogger.i(TAG, "Chat generation finished (${accumulatedResponse.length} chars output)")
+                val elapsedMs = System.currentTimeMillis() - startTime
+                val tps = if (elapsedMs > 0) (tokensCount.toDouble() / (elapsedMs / 1000.0)) else 0.0
+                val metrics = InferenceMetrics(
+                    totalTimeMs = elapsedMs,
+                    tokenCount = tokensCount,
+                    tokensPerSecond = tps,
+                    backend = activeBackend
+                )
+                val finalMessages = _uiState.value.messages.map { msg ->
+                    if (msg.id == aiMessageId) {
+                        msg.copy(metrics = metrics)
+                    } else {
+                        msg
+                    }
+                }
+
+                _uiState.value = _uiState.value.copy(
+                    messages = finalMessages,
+                    isGenerating = false
+                )
+                AppLogger.i(TAG, "Chat generation finished ($tokensCount tokens, ${elapsedMs}ms, ${String.format("%.1f", tps)} tok/s, backend: $activeBackend)")
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Inference execution error in ChatViewModel", e)
                 val errorMsg = "Inference error: ${e.localizedMessage ?: e.message}"

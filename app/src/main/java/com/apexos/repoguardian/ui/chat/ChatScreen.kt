@@ -556,11 +556,34 @@ private fun MessageBubble(
                             )
                         }
                     } else {
-                        MarkdownContent(
-                            content = message.content,
-                            textColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            onCopyCode = onCopyCode
-                        )
+                        Column {
+                            MarkdownContent(
+                                content = message.content,
+                                textColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                onCopyCode = onCopyCode
+                            )
+                            message.metrics?.let { metrics ->
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Bolt,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "${metrics.formattedDuration} • ${metrics.formattedSpeed} • ${metrics.backend}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
