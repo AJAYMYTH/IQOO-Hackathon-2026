@@ -6,8 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,13 +17,12 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import com.apexos.repoguardian.R
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.apexos.repoguardian.R
 import com.apexos.repoguardian.navigation.Routes
 import com.apexos.repoguardian.ui.theme.*
 import kotlinx.coroutines.delay
@@ -37,46 +34,68 @@ fun SplashScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // ── Entrance animation states ─────────────────────────────────────────────
+    // ── Entrance & Exit (Netlify-style reveal) animation states ───────────────
     var animStarted by remember { mutableStateOf(false) }
-    val iconScale by animateFloatAsState(
-        targetValue = if (animStarted) 1f else 0.4f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "icon_scale"
+    var isRevealing by remember { mutableStateOf(false) }
+
+    val contentScale by animateFloatAsState(
+        targetValue = when {
+            isRevealing -> 1.32f
+            animStarted -> 1.0f
+            else -> 0.75f
+        },
+        animationSpec = if (isRevealing) {
+            tween(500, easing = EaseInOutCubic)
+        } else {
+            spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+        },
+        label = "content_scale"
     )
-    val iconAlpha by animateFloatAsState(
-        targetValue = if (animStarted) 1f else 0f,
-        animationSpec = tween(600, easing = EaseOutCubic),
-        label = "icon_alpha"
+
+    val contentAlpha by animateFloatAsState(
+        targetValue = when {
+            isRevealing -> 0f
+            animStarted -> 1f
+            else -> 0f
+        },
+        animationSpec = if (isRevealing) {
+            tween(450, easing = EaseInCubic)
+        } else {
+            tween(600, easing = EaseOutCubic)
+        },
+        label = "content_alpha"
     )
+
     val titleAlpha by animateFloatAsState(
-        targetValue = if (animStarted) 1f else 0f,
-        animationSpec = tween(500, delayMillis = 250, easing = EaseOutCubic),
+        targetValue = if (animStarted && !isRevealing) 1f else 0f,
+        animationSpec = tween(500, delayMillis = 200, easing = EaseOutCubic),
         label = "title_alpha"
     )
+
     val subtitleAlpha by animateFloatAsState(
-        targetValue = if (animStarted) 1f else 0f,
-        animationSpec = tween(500, delayMillis = 400, easing = EaseOutCubic),
+        targetValue = if (animStarted && !isRevealing) 1f else 0f,
+        animationSpec = tween(500, delayMillis = 350, easing = EaseOutCubic),
         label = "subtitle_alpha"
     )
+
     val statusAlpha by animateFloatAsState(
-        targetValue = if (animStarted) 1f else 0f,
-        animationSpec = tween(400, delayMillis = 600, easing = EaseOutCubic),
+        targetValue = if (animStarted && !isRevealing) 1f else 0f,
+        animationSpec = tween(400, delayMillis = 500, easing = EaseOutCubic),
         label = "status_alpha"
     )
 
     LaunchedEffect(Unit) {
-        delay(80)
+        delay(60)
         animStarted = true
     }
 
-    // ── Navigation after load ─────────────────────────────────────────────────
+    // ── Navigation with Netlify Zoom Reveal Transition ────────────────────────
     LaunchedEffect(uiState.isLoading, uiState.showOnboarding) {
         if (!uiState.isLoading && uiState.error == null) {
-            delay(600) // Let user see the "Ready" state briefly
+            delay(500) // Brief status pause
+            isRevealing = true // Trigger Netlify zoom-out reveal
+            delay(420) // Wait for smooth expansion transition
+
             when {
                 uiState.showOnboarding -> {
                     navController.navigate(Routes.ONBOARDING) {
@@ -97,11 +116,11 @@ fun SplashScreen(
         }
     }
 
-    // ── Animated glow pulse ───────────────────────────────────────────────────
-    val infiniteTransition = rememberInfiniteTransition(label = "glow")
+    // ── Ambient Glow Transition ───────────────────────────────────────────────
+    val infiniteTransition = rememberInfiniteTransition(label = "ambient_glow")
     val glowAlpha by infiniteTransition.animateFloat(
         initialValue = 0.12f,
-        targetValue = 0.22f,
+        targetValue = 0.24f,
         animationSpec = infiniteRepeatable(
             animation = tween(2000, easing = EaseInOutSine),
             repeatMode = RepeatMode.Reverse
@@ -109,10 +128,10 @@ fun SplashScreen(
         label = "glow_alpha"
     )
     val glowScale by infiniteTransition.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 1.15f,
+        initialValue = 0.9f,
+        targetValue = 1.2f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2500, easing = EaseInOutSine),
+            animation = tween(2400, easing = EaseInOutSine),
             repeatMode = RepeatMode.Reverse
         ),
         label = "glow_scale"
@@ -125,16 +144,16 @@ fun SplashScreen(
             .background(BrandBackground),
         contentAlignment = Alignment.Center
     ) {
-        // Ambient radial glow
+        // Ambient radial emerald background glow
         Box(
             modifier = Modifier
-                .size(320.dp)
-                .scale(glowScale)
-                .blur(80.dp)
+                .size(360.dp)
+                .scale(if (isRevealing) glowScale * 2.2f else glowScale)
+                .blur(90.dp)
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            BrandEmerald.copy(alpha = glowAlpha),
+                            BrandEmerald.copy(alpha = if (isRevealing) 0.35f else glowAlpha),
                             Color.Transparent
                         )
                     ),
@@ -145,42 +164,36 @@ fun SplashScreen(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(horizontal = 40.dp)
+            modifier = Modifier
+                .padding(horizontal = 40.dp)
+                .scale(contentScale)
+                .alpha(contentAlpha)
         ) {
-            // Logo with ambient container
+            // Main Brand Logo Element
             Box(
-                modifier = Modifier
-                    .alpha(iconAlpha)
-                    .scale(iconScale),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(140.dp)
             ) {
-                // Ambient glow outer ring
+                // Subtle glowing aura
                 Box(
                     modifier = Modifier
-                        .size(116.dp)
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(BrandEmerald.copy(alpha = 0.15f))
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .background(BrandEmerald.copy(alpha = 0.12f))
                 )
-                // Logo surface
-                Surface(
-                    modifier = Modifier.size(96.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    color = Color.White,
-                    border = androidx.compose.foundation.BorderStroke(1.5.dp, BrandEmeraldLight)
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.app_logo),
-                        contentDescription = "Repo Guardian Logo",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp)
-                    )
-                }
+
+                Image(
+                    painter = painterResource(id = R.drawable.app_logo_transparent),
+                    contentDescription = "Repo Guardian Brand Logo",
+                    modifier = Modifier
+                        .size(110.dp)
+                        .padding(4.dp)
+                )
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(24.dp))
 
-            // App name
+            // App Name
             Text(
                 text = "Repo Guardian",
                 style = MaterialTheme.typography.headlineLarge,
@@ -192,25 +205,26 @@ fun SplashScreen(
 
             Spacer(Modifier.height(6.dp))
 
-            // Tagline pill
+            // Tagline Pill
             Surface(
                 shape = RoundedCornerShape(50),
                 color = BrandEmeraldMuted,
+                border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmeraldLight.copy(alpha = 0.3f)),
                 modifier = Modifier.alpha(subtitleAlpha)
             ) {
                 Text(
                     text = "On-Device AI · Private · Offline",
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
                     style = MaterialTheme.typography.labelSmall,
-                    color = BrandEmerald,
+                    color = BrandEmeraldLight,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 0.3.sp
                 )
             }
 
-            Spacer(Modifier.height(48.dp))
+            Spacer(Modifier.height(44.dp))
 
-            // Status area
+            // Status Area
             Box(
                 modifier = Modifier
                     .alpha(statusAlpha)
@@ -243,7 +257,7 @@ fun SplashScreen(
                 }
             }
 
-            // Error retry
+            // Error Retry
             if (uiState.error != null) {
                 Spacer(Modifier.height(16.dp))
                 OutlinedButton(

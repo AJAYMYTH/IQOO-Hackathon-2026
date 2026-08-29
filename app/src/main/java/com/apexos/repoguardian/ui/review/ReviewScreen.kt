@@ -24,6 +24,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.apexos.repoguardian.data.llm.CodeIssue
 import com.apexos.repoguardian.navigation.Routes
+import com.apexos.repoguardian.ui.components.AiThinkingIndicator
 import com.apexos.repoguardian.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -215,37 +216,15 @@ fun ReviewScreen(
 
             if (uiState.isAnalyzing) {
                 item {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = BrandSurfaceElev,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmerald.copy(alpha = 0.4f))
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(18.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(22.dp),
-                                strokeWidth = 2.5.dp,
-                                color = BrandEmerald
-                            )
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Column {
-                                Text(
-                                    text = "AI Security & Code Review in Progress",
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = BrandOnBg
-                                )
-                                Text(
-                                    text = "Running local on-device inference via llama.cpp...",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = BrandOnBgMuted
-                                )
-                            }
-                        }
-                    }
+                    AiThinkingIndicator(
+                        modifier = Modifier.padding(bottom = 8.dp),
+                        thinkingPhases = listOf(
+                            "Analyzing diff hunks and syntax trees...",
+                            "Scanning for CVEs, logic flaws & memory leaks...",
+                            "Synthesizing production review & remediation steps...",
+                            "Finalizing AI code audit..."
+                        )
+                    )
                 }
             }
 

@@ -12,11 +12,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.apexos.repoguardian.ui.theme.*
 import kotlinx.coroutines.delay
 
 @Composable
@@ -26,9 +29,9 @@ fun shimmerBrush(
 ): Brush {
     return if (showShimmer) {
         val shimmerColors = listOf(
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+            BrandSurfaceElev,
+            BrandEmeraldMuted.copy(alpha = 0.6f),
+            BrandSurfaceElev
         )
 
         val transition = rememberInfiniteTransition(label = "shimmerTransition")
@@ -60,24 +63,24 @@ fun shimmerBrush(
 fun AiThinkingIndicator(
     modifier: Modifier = Modifier,
     thinkingPhases: List<String> = listOf(
-        "Analyzing repository context and structure...",
-        "Evaluating code diffs and architectural rules...",
-        "Synthesizing production-grade solution...",
-        "Formatting response with code verification..."
+        "Analyzing repository context & AST...",
+        "Evaluating code diffs & memory safety...",
+        "Synthesizing on-device reasoning chain...",
+        "Formatting verified patch response..."
     )
 ) {
     var phaseIndex by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         while (true) {
-            delay(1500)
+            delay(1600)
             phaseIndex = (phaseIndex + 1) % thinkingPhases.size
         }
     }
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulseTransition")
     val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
+        initialValue = 0.5f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(800, easing = FastOutSlowInEasing),
@@ -85,15 +88,23 @@ fun AiThinkingIndicator(
         ),
         label = "pulseAlpha"
     )
+    val ringScale by infiniteTransition.animateFloat(
+        initialValue = 0.9f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "ringScale"
+    )
 
-    Card(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+        color = BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmerald.copy(alpha = 0.35f))
     ) {
         Column(
             modifier = Modifier
@@ -105,37 +116,45 @@ fun AiThinkingIndicator(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(28.dp)
+                        .size(30.dp)
+                        .scale(ringScale)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = pulseAlpha * 0.3f)),
+                        .background(BrandEmeraldMuted),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.Default.Psychology,
                         contentDescription = "AI Thinking",
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = BrandEmeraldLight,
                         modifier = Modifier.size(18.dp)
                     )
                 }
 
                 Spacer(modifier = Modifier.width(10.dp))
 
-                Text(
-                    text = "AI Thinking",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Column {
+                    Text(
+                        text = "AI Thinking & Reasoning",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandEmeraldLight
+                    )
+                    Text(
+                        text = "Local llama.cpp inference",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = BrandOnBgSubtle
+                    )
+                }
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     repeat(3) { index ->
                         val dotAlpha by infiniteTransition.animateFloat(
-                            initialValue = 0.2f,
+                            initialValue = 0.25f,
                             targetValue = 1f,
                             animationSpec = infiniteRepeatable(
-                                animation = tween(600, delayMillis = index * 150, easing = LinearEasing),
+                                animation = tween(600, delayMillis = index * 180, easing = LinearEasing),
                                 repeatMode = RepeatMode.Reverse
                             ),
                             label = "dotAlpha$index"
@@ -144,7 +163,7 @@ fun AiThinkingIndicator(
                             modifier = Modifier
                                 .size(6.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = dotAlpha))
+                                .background(BrandEmeraldLight.copy(alpha = dotAlpha))
                         )
                     }
                 }
@@ -156,12 +175,12 @@ fun AiThinkingIndicator(
             Text(
                 text = thinkingPhases[phaseIndex],
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                color = BrandOnBg,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(shimmerBrush())
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -174,14 +193,14 @@ fun AiThinkingIndicator(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.85f)
-                        .height(10.dp)
+                        .height(8.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(shimmerBrush())
                 )
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.65f)
-                        .height(10.dp)
+                        .fillMaxWidth(0.60f)
+                        .height(8.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(shimmerBrush())
                 )

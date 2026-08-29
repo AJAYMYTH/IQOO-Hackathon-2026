@@ -632,7 +632,7 @@ fun StorageCacheCard(
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("GGUF Models", style = MaterialTheme.typography.labelSmall, color = BrandOnBgSubtle)
                         Spacer(modifier = Modifier.height(3.dp))
-                        Text(modelsSize, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = BrandEmeraldLight)
+                        Text(modelsSize, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = BrandOnBg)
                     }
                 }
             }
@@ -696,18 +696,23 @@ fun StorageCacheCard(
                     onClick = onClearCacheClick,
                     modifier = Modifier.weight(1f).height(44.dp),
                     shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = BrandEmeraldMuted.copy(alpha = 0.5f))
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = BrandSurfaceElev,
+                        contentColor = BrandOnBg
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
                 ) {
-                    Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp), tint = BrandEmeraldLight)
+                    Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp), tint = BrandOnBg)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Clear Cache", color = BrandEmeraldLight, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text("Clear Cache", color = BrandOnBg, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 }
 
                 Button(
                     onClick = onBrowseModelsClick,
                     modifier = Modifier.weight(1f).height(44.dp),
                     shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = BrandSurfaceElev)
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandSurfaceElev),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
                 ) {
                     Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = BrandEmeraldLight)
                     Spacer(modifier = Modifier.width(6.dp))

@@ -141,15 +141,15 @@ fun OnboardingScreen(
                     Surface(
                         modifier = Modifier.size(32.dp),
                         shape = RoundedCornerShape(8.dp),
-                        color = Color.White,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmeraldLight)
+                        color = BrandSurfaceElev,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmeraldLight.copy(alpha = 0.4f))
                     ) {
                         Image(
-                            painter = painterResource(id = R.drawable.app_logo),
+                            painter = painterResource(id = R.drawable.app_logo_transparent),
                             contentDescription = "Repo Guardian Logo",
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(4.dp)
+                                .padding(3.dp)
                         )
                     }
                     Spacer(Modifier.width(10.dp))

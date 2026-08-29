@@ -121,11 +121,11 @@ fun AuthScreen(
                 Surface(
                     modifier = Modifier.size(44.dp),
                     shape = RoundedCornerShape(12.dp),
-                    color = Color.White,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmeraldLight)
+                    color = BrandSurfaceElev,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmeraldLight.copy(alpha = 0.4f))
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.app_logo),
+                        painter = painterResource(id = R.drawable.app_logo_transparent),
                         contentDescription = "Repo Guardian Logo",
                         modifier = Modifier
                             .fillMaxSize()
