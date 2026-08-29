@@ -119,20 +119,82 @@ class SettingsViewModel @Inject constructor(
     }
 
     private suspend fun calculateStorageSizes(models: List<File>): Pair<String, String> = withContext(Dispatchers.IO) {
-        val cacheDir = context.cacheDir
-        val cacheSizeBytes = cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
-        val modelsSizeBytes = models.sumOf { it.length() }
+        var totalCacheBytes = 0L
 
-        Pair(formatFileSize(cacheSizeBytes), formatFileSize(modelsSizeBytes))
+        // 1. Internal app cache
+        try {
+            context.cacheDir?.let { dir ->
+                if (dir.exists()) {
+                    totalCacheBytes += dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.w("SettingsVM", "Failed to measure internal cache: ${e.message}")
+        }
+
+        // 2. External app cache
+        try {
+            context.externalCacheDir?.let { dir ->
+                if (dir.exists()) {
+                    totalCacheBytes += dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.w("SettingsVM", "Failed to measure external cache: ${e.message}")
+        }
+
+        // 3. Code cache
+        try {
+            context.codeCacheDir?.let { dir ->
+                if (dir.exists()) {
+                    totalCacheBytes += dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.w("SettingsVM", "Failed to measure code cache: ${e.message}")
+        }
+
+        // 4. Temporary download buffers in files dir
+        try {
+            context.filesDir?.let { dir ->
+                if (dir.exists()) {
+                    totalCacheBytes += dir.walkTopDown()
+                        .filter { it.isFile && (it.name.endsWith(".tmp", ignoreCase = true) || it.name.endsWith(".temp", ignoreCase = true)) }
+                        .sumOf { it.length() }
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.w("SettingsVM", "Failed to measure temp files: ${e.message}")
+        }
+
+        val modelsSizeBytes = models.sumOf { it.length() }
+        Pair(formatFileSize(totalCacheBytes), formatFileSize(modelsSizeBytes))
+    }
+
+    fun refreshStorageSizes() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val models = modelDownloadManager.getDownloadedModels()
+            val (cacheFormatted, modelsFormatted) = calculateStorageSizes(models)
+            _uiState.value = _uiState.value.copy(
+                downloadedModels = models,
+                appCacheSizeFormatted = cacheFormatted,
+                modelsSizeFormatted = modelsFormatted
+            )
+        }
     }
 
     private fun formatFileSize(size: Long): String {
-        if (size <= 0) return "0 KB"
-        val units = arrayOf("B", "KB", "MB", "GB")
-        val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1024.0)).toInt()
-        val index = digitGroups.coerceIn(0, units.size - 1)
-        val df = DecimalFormat("#,##0.#")
-        return "${df.format(size / Math.pow(1024.0, index.toDouble()))} ${units[index]}"
+        if (size <= 0) return "0 B"
+        val kb = size / 1024.0
+        val mb = kb / 1024.0
+        val gb = mb / 1024.0
+
+        return when {
+            gb >= 1.0 -> String.format("%.2f GB", gb)
+            mb >= 1.0 -> String.format("%.1f MB", mb)
+            kb >= 1.0 -> String.format("%.1f KB", kb)
+            else -> "$size B"
+        }
     }
 
     fun updateModelPath(path: String) {
@@ -178,14 +240,56 @@ class SettingsViewModel @Inject constructor(
 
     fun clearAppCache() {
         viewModelScope.launch(Dispatchers.IO) {
-            context.cacheDir.deleteRecursively()
-            context.cacheDir.mkdirs()
+            var freedBytes = 0L
+
+            // 1. Clear internal cache
+            try {
+                context.cacheDir?.let { dir ->
+                    if (dir.exists()) {
+                        freedBytes += dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                        dir.deleteRecursively()
+                        dir.mkdirs()
+                    }
+                }
+            } catch (e: Exception) {
+                AppLogger.e("SettingsVM", "Error clearing internal cache", e)
+            }
+
+            // 2. Clear external cache
+            try {
+                context.externalCacheDir?.let { dir ->
+                    if (dir.exists()) {
+                        freedBytes += dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                        dir.deleteRecursively()
+                        dir.mkdirs()
+                    }
+                }
+            } catch (e: Exception) {
+                AppLogger.e("SettingsVM", "Error clearing external cache", e)
+            }
+
+            // 3. Clear temporary files in filesDir
+            try {
+                context.filesDir?.let { dir ->
+                    if (dir.exists()) {
+                        dir.walkTopDown()
+                            .filter { it.isFile && (it.name.endsWith(".tmp", ignoreCase = true) || it.name.endsWith(".temp", ignoreCase = true)) }
+                            .forEach { tmpFile ->
+                                freedBytes += tmpFile.length()
+                                tmpFile.delete()
+                            }
+                    }
+                }
+            } catch (e: Exception) {
+                AppLogger.e("SettingsVM", "Error clearing temporary files", e)
+            }
+
             val models = modelDownloadManager.getDownloadedModels()
             val (cacheFormatted, modelsFormatted) = calculateStorageSizes(models)
             _uiState.value = _uiState.value.copy(
                 appCacheSizeFormatted = cacheFormatted,
                 modelsSizeFormatted = modelsFormatted,
-                savedMessage = "Application cache cleared successfully!"
+                savedMessage = if (freedBytes > 0) "Cleared ${formatFileSize(freedBytes)} of application cache!" else "Application cache is already clean (0 B)."
             )
         }
     }

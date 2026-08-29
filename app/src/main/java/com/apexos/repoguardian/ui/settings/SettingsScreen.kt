@@ -103,6 +103,10 @@ fun SettingsScreen(
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
 
+    LaunchedEffect(Unit) {
+        viewModel.refreshStorageSizes()
+    }
+
     LaunchedEffect(updateUiState) {
         if (updateUiState is UpdateUiState.UpdateAvailable) {
             showUpdateDialog = true
@@ -334,7 +338,8 @@ fun SettingsScreen(
                 downloadedModels = uiState.downloadedModels,
                 onClearCacheClick = { showClearCacheDialog = true },
                 onDeleteModelClick = { viewModel.deleteDownloadedModel(it) },
-                onBrowseModelsClick = { navController.navigate(Routes.MODEL_BROWSER) }
+                onBrowseModelsClick = { navController.navigate(Routes.MODEL_BROWSER) },
+                onRefreshCache = { viewModel.refreshStorageSizes() }
             )
 
             // App Updates & Versioning section
@@ -674,7 +679,8 @@ fun StorageCacheCard(
     downloadedModels: List<File>,
     onClearCacheClick: () -> Unit,
     onDeleteModelClick: (File) -> Unit,
-    onBrowseModelsClick: () -> Unit
+    onBrowseModelsClick: () -> Unit,
+    onRefreshCache: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -690,19 +696,48 @@ fun StorageCacheCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(
-                    Icons.Default.Storage,
-                    contentDescription = null,
-                    tint = BrandEmeraldLight,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Storage & Cache",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = BrandOnBg
-                )
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(BrandEmeraldMuted),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Storage,
+                        contentDescription = null,
+                        tint = BrandEmeraldLight,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Storage & Cache",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandOnBg
+                    )
+                    Text(
+                        text = "Live app cache, HTTP buffers & models",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = BrandOnBgMuted
+                    )
+                }
+
+                IconButton(
+                    onClick = onRefreshCache,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = "Refresh cache stats",
+                        tint = BrandEmeraldLight,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
 
             // Stats row
