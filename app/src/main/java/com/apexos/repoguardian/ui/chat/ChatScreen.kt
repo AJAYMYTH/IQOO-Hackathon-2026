@@ -22,17 +22,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.apexos.repoguardian.ui.theme.CodeBackground
-import com.apexos.repoguardian.ui.theme.StatusInfo
+import com.apexos.repoguardian.ui.components.AiThinkingIndicator
+import com.apexos.repoguardian.ui.components.MarkdownContent
 import com.apexos.repoguardian.ui.theme.StatusPass
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,7 +72,13 @@ fun ChatScreen(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Switch Repo", tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        Icons.Default.ArrowDropDown,
+                                        contentDescription = "Switch Repo",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
                                 Text(
                                     text = uiState.activeModelName,
@@ -105,7 +109,12 @@ fun ChatScreen(
                                             )
                                             if (repo.name == uiState.repoName) {
                                                 Spacer(modifier = Modifier.width(8.dp))
-                                                Icon(Icons.Default.Check, contentDescription = "Active", tint = StatusPass, modifier = Modifier.size(16.dp))
+                                                Icon(
+                                                    Icons.Default.Check,
+                                                    contentDescription = "Active",
+                                                    tint = StatusPass,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
                                             }
                                         }
                                     },
@@ -136,15 +145,26 @@ fun ChatScreen(
             ) {
                 HorizontalDivider()
 
-                // Quick Prompt Chips
+                // Quick Prompt Chips with Material Icons
                 LazyRow(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(viewModel.quickPrompts) { quickPrompt ->
+                        val icon = getCategoryIcon(quickPrompt.category)
                         SuggestionChip(
                             onClick = { viewModel.sendMessage(quickPrompt.prompt) },
-                            label = { Text("${quickPrompt.icon} ${quickPrompt.title}") },
+                            icon = {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            label = { Text(quickPrompt.title, fontWeight = FontWeight.Medium) },
                             shape = RoundedCornerShape(8.dp)
                         )
                     }
@@ -161,7 +181,7 @@ fun ChatScreen(
                         value = inputText,
                         onValueChange = { inputText = it },
                         modifier = Modifier.weight(1f),
-                        placeholder = { Text("Ask about diffs, tests, CI/CD...") },
+                        placeholder = { Text("Ask about architecture, diffs, tests, CI/CD...") },
                         maxLines = 4,
                         shape = RoundedCornerShape(20.dp)
                     )
@@ -184,20 +204,12 @@ fun ChatScreen(
                                 else MaterialTheme.colorScheme.surfaceVariant
                             )
                     ) {
-                        if (uiState.isGenerating) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        } else {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "Send",
-                                tint = if (inputText.isNotBlank()) MaterialTheme.colorScheme.onPrimary
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                            )
-                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send",
+                            tint = if (inputText.isNotBlank()) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                        )
                     }
                 }
             }
@@ -210,7 +222,7 @@ fun ChatScreen(
                 .padding(padding)
                 .padding(horizontal = 12.dp),
             contentPadding = PaddingValues(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             items(uiState.messages) { message ->
                 MessageBubble(
@@ -226,18 +238,7 @@ fun ChatScreen(
 
             if (uiState.isGenerating) {
                 item {
-                    Row(
-                        modifier = Modifier.padding(start = 8.dp, top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "AI is thinking...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
+                    AiThinkingIndicator()
                 }
             }
         }
@@ -253,7 +254,8 @@ private fun MessageBubble(
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Top
     ) {
         if (!isUser) {
             Box(
@@ -264,8 +266,8 @@ private fun MessageBubble(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Default.SmartToy,
-                    contentDescription = null,
+                    Icons.Default.Psychology,
+                    contentDescription = "AI",
                     modifier = Modifier.size(18.dp),
                     tint = MaterialTheme.colorScheme.onPrimaryContainer
                 )
@@ -282,105 +284,51 @@ private fun MessageBubble(
             ),
             color = if (isUser) MaterialTheme.colorScheme.primaryContainer
             else MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.widthIn(max = 320.dp)
+            modifier = Modifier.widthIn(max = 340.dp)
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                // Parse code blocks if any
-                val parts = parseMarkdownCodeBlocks(message.content)
-                parts.forEach { part ->
-                    when (part) {
-                        is ContentPart.Text -> {
-                            Text(
-                                text = part.text,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        is ContentPart.Code -> {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Card(
-                                shape = RoundedCornerShape(8.dp),
-                                colors = CardDefaults.cardColors(containerColor = CodeBackground)
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = part.language.ifBlank { "code" },
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = StatusInfo,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                        IconButton(
-                                            onClick = { onCopyCode(part.code) },
-                                            modifier = Modifier.size(20.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.ContentCopy,
-                                                contentDescription = "Copy",
-                                                tint = Color.White.copy(alpha = 0.7f),
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = part.code,
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 12.sp,
-                                            lineHeight = 16.sp
-                                        ),
-                                        color = Color.White.copy(alpha = 0.9f)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                        }
-                    }
+            Box(modifier = Modifier.padding(12.dp)) {
+                if (isUser) {
+                    Text(
+                        text = message.content,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                } else {
+                    MarkdownContent(
+                        content = message.content,
+                        textColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onCopyCode = onCopyCode
+                    )
                 }
+            }
+        }
+
+        if (isUser) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Person,
+                    contentDescription = "User",
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
             }
         }
     }
 }
 
-private sealed class ContentPart {
-    data class Text(val text: String) : ContentPart()
-    data class Code(val language: String, val code: String) : ContentPart()
-}
-
-private fun parseMarkdownCodeBlocks(raw: String): List<ContentPart> {
-    val result = mutableListOf<ContentPart>()
-    val codeBlockRegex = Regex("```([a-zA-Z0-9_]*)\n([\\s\\S]*?)```")
-    var lastIndex = 0
-
-    codeBlockRegex.findAll(raw).forEach { match ->
-        val textBefore = raw.substring(lastIndex, match.range.first)
-        if (textBefore.isNotBlank()) {
-            result.add(ContentPart.Text(textBefore.trim()))
-        }
-
-        val lang = match.groupValues[1]
-        val code = match.groupValues[2]
-        result.add(ContentPart.Code(lang, code.trimEnd()))
-
-        lastIndex = match.range.last + 1
-    }
-
-    if (lastIndex < raw.length) {
-        val remaining = raw.substring(lastIndex)
-        if (remaining.isNotBlank()) {
-            result.add(ContentPart.Text(remaining.trim()))
-        }
-    }
-
-    if (result.isEmpty()) {
-        result.add(ContentPart.Text(raw))
-    }
-
-    return result
+private fun getCategoryIcon(category: PromptCategory): ImageVector = when (category) {
+    PromptCategory.EXPLAIN -> Icons.Default.MenuBook
+    PromptCategory.REVIEW -> Icons.Default.BugReport
+    PromptCategory.CICD -> Icons.Default.Terminal
+    PromptCategory.TESTS -> Icons.Default.FactCheck
+    PromptCategory.RELEASE -> Icons.Default.RocketLaunch
+    PromptCategory.SECURITY -> Icons.Default.Security
+    PromptCategory.PERFORMANCE -> Icons.Default.Speed
 }

@@ -185,17 +185,17 @@ fun ModelBrowserScreen(
                     Tab(
                         selected = uiState.selectedTab == 0,
                         onClick = { viewModel.selectTab(0) },
-                        text = { Text("⚡ Featured") }
+                        text = { Text("Featured") }
                     )
                     Tab(
                         selected = uiState.selectedTab == 1,
                         onClick = { viewModel.selectTab(1) },
-                        text = { Text("🔍 Search HF") }
+                        text = { Text("Search HF") }
                     )
                     Tab(
                         selected = uiState.selectedTab == 2,
                         onClick = { viewModel.selectTab(2) },
-                        text = { Text("💾 Saved (${uiState.downloadedModels.size})") }
+                        text = { Text("Saved (${uiState.downloadedModels.size})") }
                     )
                 }
 
@@ -728,7 +728,7 @@ private fun ModelFileItem(
                             shape = RoundedCornerShape(8.dp),
                             color = StatusPass.copy(alpha = 0.15f)
                         ) {
-                            Text("Active ✓", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = StatusPass, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                            Text("Active", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = StatusPass, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                         }
                     }
                     isDownloaded -> {

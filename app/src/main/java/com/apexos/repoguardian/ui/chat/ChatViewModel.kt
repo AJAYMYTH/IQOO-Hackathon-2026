@@ -23,9 +23,19 @@ data class ChatMessage(
     val repoContext: String? = null
 )
 
+enum class PromptCategory {
+    EXPLAIN,
+    REVIEW,
+    CICD,
+    TESTS,
+    RELEASE,
+    SECURITY,
+    PERFORMANCE
+}
+
 data class QuickPrompt(
     val title: String,
-    val icon: String,
+    val category: PromptCategory,
     val prompt: String
 )
 
@@ -53,33 +63,38 @@ class ChatViewModel @Inject constructor(
 
     val quickPrompts = listOf(
         QuickPrompt(
+            title = "Explain Repo",
+            category = PromptCategory.EXPLAIN,
+            prompt = "Explain the architecture, structure, key modules, and technical design of this repository in detail."
+        ),
+        QuickPrompt(
             title = "Review Commits",
-            icon = "🔍",
+            category = PromptCategory.REVIEW,
             prompt = "Review the recent commits in this repository for potential logic errors, null pointer dereferences, security vulnerabilities, and memory leaks. Provide detailed explanations and actionable code fixes."
         ),
         QuickPrompt(
             title = "Generate CI/CD",
-            icon = "🚀",
+            category = PromptCategory.CICD,
             prompt = "Generate a production-ready GitHub Actions CI/CD workflow (.github/workflows/ci.yml) tailored for this repository with automated testing, lint checks, and artifact packaging."
         ),
         QuickPrompt(
             title = "Write Unit Tests",
-            icon = "🧪",
+            category = PromptCategory.TESTS,
             prompt = "Write comprehensive unit tests with MockK, JUnit 5, and Kotlin Coroutines Test for the primary ViewModel and Repository components of this repository."
         ),
         QuickPrompt(
             title = "Release Pipeline",
-            icon = "🚢",
+            category = PromptCategory.RELEASE,
             prompt = "Create an automated GitHub Actions release workflow (.github/workflows/release.yml) triggered on version tags (v*) that compiles release APKs, generates SHA-256 checksums, and publishes a GitHub Release with changelogs."
         ),
         QuickPrompt(
             title = "Security Audit",
-            icon = "🛡️",
+            category = PromptCategory.SECURITY,
             prompt = "Perform a security audit on this repository. Check AndroidManifest permissions, API token handling, and networking configurations."
         ),
         QuickPrompt(
             title = "Optimize Performance",
-            icon = "⚡",
+            category = PromptCategory.PERFORMANCE,
             prompt = "Analyze potential performance bottlenecks in Compose recompositions, coroutine lifecycle scopes, and background threads, and suggest optimization strategies."
         )
     )
@@ -122,14 +137,13 @@ class ChatViewModel @Inject constructor(
                 val owner = _uiState.value.repoOwner.ifBlank { "AJAYMYTH" }
                 val repo = _uiState.value.repoName.ifBlank { "Repository" }
                 val welcome = """
-### 👋 Welcome to Repo Guardian AI Assistant!
+### Repo Guardian AI Assistant
 
-I am your on-device AI coding partner. I can review your commits, write unit tests, and generate automated CI/CD and release pipelines.
+Connected to repository `$owner/$repo` with on-device model `$modelName`.
 
-**Active Repository:** `$owner/$repo`
-**Active Model:** `$modelName`
+You can ask questions about your code, request deep repository explanations, perform security commit audits, and generate CI/CD pipelines and unit test suites.
 
-Tap any quick action below or ask a question to get started!
+Select any quick action below or type a query to begin.
                 """.trimIndent()
                 _uiState.value = _uiState.value.copy(
                     messages = listOf(ChatMessage(content = welcome, isUser = false))
@@ -163,7 +177,7 @@ Tap any quick action below or ask a question to get started!
             )
             loadRepoCommits(repo.owner.login, repo.name)
 
-            val switchNotice = "Switched repository context to **${repo.fullName}**."
+            val switchNotice = "Switched active repository context to **${repo.fullName}**."
             _uiState.value = _uiState.value.copy(
                 messages = _uiState.value.messages + ChatMessage(content = switchNotice, isUser = false)
             )
@@ -211,7 +225,7 @@ Provide clear, structured, and production-ready responses with complete code sni
             } catch (e: Exception) {
                 val errorMsg = "AI generation error: ${e.localizedMessage ?: e.message}"
                 _uiState.value = _uiState.value.copy(
-                    messages = _uiState.value.messages + ChatMessage(content = "⚠️ $errorMsg", isUser = false),
+                    messages = _uiState.value.messages + ChatMessage(content = "Error: $errorMsg", isUser = false),
                     isGenerating = false,
                     error = errorMsg
                 )
