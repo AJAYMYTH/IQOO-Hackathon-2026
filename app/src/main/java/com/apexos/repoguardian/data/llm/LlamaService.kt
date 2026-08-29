@@ -191,7 +191,7 @@ class LlamaService @Inject constructor(
         // 1. Try Local Server if configured
         if (localServerUrl.isNotBlank()) {
             AppLogger.i(TAG, "Querying local server for code review: $localServerUrl")
-            val serverResp = queryLocalServer(prompt, 1500, localServerUrl)
+            val serverResp = queryLocalServer(prompt, 4096, localServerUrl)
             if (!serverResp.isNullOrBlank()) {
                 val elapsedMs = System.currentTimeMillis() - startTime
                 val approxTokens = serverResp.length / 4
@@ -212,7 +212,7 @@ class LlamaService @Inject constructor(
             inferenceMutex.withLock {
                 try {
                     AppLogger.i(TAG, "Running code review via on-device native LLM (prompt: ${prompt.length} chars, backend: $activeBackend)...")
-                    val response = LlamaBridge.generate(contextHandle, prompt, 1024)
+                    val response = LlamaBridge.generate(contextHandle, prompt, 4096)
                     if (response.isNotBlank() && !response.startsWith("Error:")) {
                         val elapsedMs = System.currentTimeMillis() - startTime
                         val approxTokens = response.length / 4
@@ -251,7 +251,7 @@ class LlamaService @Inject constructor(
         // 1. Try Local Server if configured
         if (localServerUrl.isNotBlank()) {
             AppLogger.i(TAG, "Querying local server for CI/CD YAML: $localServerUrl")
-            val serverResp = queryLocalServer(prompt, 1500, localServerUrl)
+            val serverResp = queryLocalServer(prompt, 4096, localServerUrl)
             if (!serverResp.isNullOrBlank()) {
                 AppLogger.i(TAG, "Received CI/CD YAML from local server")
                 return@withContext cleanYamlOutput(serverResp)
@@ -263,7 +263,7 @@ class LlamaService @Inject constructor(
             inferenceMutex.withLock {
                 try {
                     AppLogger.i(TAG, "Generating CI/CD workflow via on-device native LLM...")
-                    val response = LlamaBridge.generate(contextHandle, prompt, 1024)
+                    val response = LlamaBridge.generate(contextHandle, prompt, 4096)
                     if (response.isNotBlank() && !response.startsWith("Error:")) {
                         AppLogger.i(TAG, "On-device CI/CD generation completed successfully")
                         return@withContext cleanYamlOutput(response)
@@ -294,7 +294,7 @@ class LlamaService @Inject constructor(
         // 1. Try Local Server if configured
         if (localServerUrl.isNotBlank()) {
             AppLogger.i(TAG, "Sending chat to local server: $localServerUrl")
-            val serverResp = queryLocalServer(fullPrompt, 2048, localServerUrl)
+            val serverResp = queryLocalServer(fullPrompt, 4096, localServerUrl)
             if (!serverResp.isNullOrBlank()) {
                 return@withContext serverResp
             }
@@ -305,7 +305,7 @@ class LlamaService @Inject constructor(
             inferenceMutex.withLock {
                 try {
                     AppLogger.i(TAG, "Running chat inference via on-device native LLM...")
-                    val response = LlamaBridge.generate(contextHandle, fullPrompt, 2048)
+                    val response = LlamaBridge.generate(contextHandle, fullPrompt, 4096)
                     if (response.isNotBlank() && !response.startsWith("Error:")) {
                         return@withContext response
                     }
@@ -350,7 +350,7 @@ class LlamaService @Inject constructor(
             AppLogger.i(TAG, "Initiating stream from local server: $localServerUrl")
             var receivedAnyToken = false
             try {
-                val streamSuccess = streamFromLocalServer(fullPrompt, 2048, localServerUrl) { piece ->
+                val streamSuccess = streamFromLocalServer(fullPrompt, 4096, localServerUrl) { piece ->
                     receivedAnyToken = true
                     trySend(piece)
                 }
@@ -369,7 +369,7 @@ class LlamaService @Inject constructor(
                 try {
                     AppLogger.i(TAG, "Streaming chat tokens from on-device native LLM (prompt: ${fullPrompt.length} chars)...")
                     var tokenCount = 0
-                    val result = LlamaBridge.generateStream(contextHandle, fullPrompt, 2048) { piece ->
+                    val result = LlamaBridge.generateStream(contextHandle, fullPrompt, 4096) { piece ->
                         tokenCount++
                         trySend(piece)
                     }

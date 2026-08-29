@@ -145,10 +145,11 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
 
     std::string result;
-    int max_gen = maxTokens > 0 ? maxTokens : 1024;
+    int available_ctx = std::max(128, n_ctx - (int)prompt_tokens.size() - 4);
+    int max_gen = maxTokens > 0 ? std::min(maxTokens, available_ctx) : available_ctx;
     int n_cur = (int)prompt_tokens.size();
     int tokens_generated = 0;
-    LOGI("Starting on-device generation: %zu prompt tokens (prefill: %lld ms), max_gen: %d", prompt_tokens.size(), prefill_ms, max_gen);
+    LOGI("Starting on-device generation: %zu prompt tokens (prefill: %lld ms, available_ctx: %d), max_gen: %d", prompt_tokens.size(), prefill_ms, available_ctx, max_gen);
 
     auto t_gen_start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < max_gen; i++) {
@@ -272,10 +273,11 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
 
     std::string result;
-    int max_gen = maxTokens > 0 ? maxTokens : 1024;
+    int available_ctx = std::max(128, n_ctx - (int)prompt_tokens.size() - 4);
+    int max_gen = maxTokens > 0 ? std::min(maxTokens, available_ctx) : available_ctx;
     int n_cur = (int)prompt_tokens.size();
     int tokens_generated = 0;
-    LOGI("Starting streaming generation: %zu prompt tokens (prefill: %lld ms), max_gen: %d", prompt_tokens.size(), prefill_ms, max_gen);
+    LOGI("Starting streaming generation: %zu prompt tokens (prefill: %lld ms, available_ctx: %d), max_gen: %d", prompt_tokens.size(), prefill_ms, available_ctx, max_gen);
 
     auto t_gen_start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < max_gen; i++) {

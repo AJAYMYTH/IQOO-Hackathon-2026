@@ -17,14 +17,14 @@ object LlamaBridge {
     external fun createContext(modelHandle: Long, contextSize: Int = 4096): Long
 
     // Generate completion from prompt, returns generated text
-    // maxTokens: max tokens to generate
-    external fun generate(contextHandle: Long, prompt: String, maxTokens: Int = 1024): String
+    // maxTokens: max tokens to generate (up to context window)
+    external fun generate(contextHandle: Long, prompt: String, maxTokens: Int = 4096): String
 
     // Generate completion with real-time streaming callback per token piece
     external fun generateStream(
         contextHandle: Long,
         prompt: String,
-        maxTokens: Int = 1024,
+        maxTokens: Int = 4096,
         onToken: (String) -> Unit
     ): String
 
