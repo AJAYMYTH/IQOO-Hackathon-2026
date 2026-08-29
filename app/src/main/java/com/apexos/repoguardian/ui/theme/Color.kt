@@ -2,37 +2,52 @@ package com.apexos.repoguardian.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Primary palette - Deep Indigo
-val Primary = Color(0xFF3F51B5)
-val PrimaryDark = Color(0xFF303F9F)
-val PrimaryLight = Color(0xFFC5CAE9)
-val OnPrimary = Color(0xFFFFFFFF)
+// ─── Brand Core ──────────────────────────────────────────────────────────────
+// Deep dark surfaces — Zinc editorial hierarchy
+val BrandBackground   = Color(0xFF0C0C0E)   // Near-black base
+val BrandSurface      = Color(0xFF131317)   // Card level 1
+val BrandSurfaceHigh  = Color(0xFF1C1C22)   // Card level 2
+val BrandSurfaceElev  = Color(0xFF26262F)   // Elevated / modal
+val BrandBorder       = Color(0xFF2E2E3A)   // Dividers / outlines
 
-// Secondary palette - Teal
-val Secondary = Color(0xFF009688)
-val SecondaryDark = Color(0xFF00796B)
-val OnSecondary = Color(0xFFFFFFFF)
+// Primary accent — Emerald
+val BrandEmerald      = Color(0xFF34D399)   // Emerald-400 — primary CTA
+val BrandEmeraldDark  = Color(0xFF059669)   // Emerald-600 — pressed / container
+val BrandEmeraldMuted = Color(0xFF065F46)   // Emerald-900 — chip / tag bg
+val OnEmerald         = Color(0xFF022C22)   // Text on emerald
 
-// Status colors
-val StatusPass = Color(0xFF4CAF50)
-val StatusFail = Color(0xFFF44336)
-val StatusPending = Color(0xFFFFC107)
-val StatusInfo = Color(0xFF2196F3)
+// Text hierarchy
+val BrandOnBg         = Color(0xFFEDEDF2)   // Primary text
+val BrandOnBgMuted    = Color(0xFF9B9BAD)   // Secondary text
+val BrandOnBgSubtle   = Color(0xFF54546A)   // Tertiary / placeholder
 
-// Severity colors
-val SeverityCritical = Color(0xFFD32F2F)
-val SeverityWarning = Color(0xFFFF9800)
-val SeverityInfo = Color(0xFF2196F3)
+// ─── Status Semantic ──────────────────────────────────────────────────────────
+val StatusPass        = Color(0xFF34D399)   // Same as emerald — success
+val StatusFail        = Color(0xFFF87171)   // Red-400
+val StatusPending     = Color(0xFFFBBF24)   // Amber-400
+val StatusInfo        = Color(0xFF60A5FA)   // Blue-400
 
-// Dark theme colors
-val DarkBackground = Color(0xFF121212)
-val DarkSurface = Color(0xFF1E1E1E)
-val DarkSurfaceVariant = Color(0xFF2D2D2D)
-val DarkOnBackground = Color(0xFFE0E0E0)
-val DarkOnSurface = Color(0xFFE0E0E0)
+// ─── Severity ────────────────────────────────────────────────────────────────
+val SeverityCritical  = Color(0xFFF87171)   // Red-400
+val SeverityWarning   = Color(0xFFFBBF24)   // Amber-400
+val SeverityInfo      = Color(0xFF60A5FA)   // Blue-400
 
-// Code block colors
-val CodeBackground = Color(0xFF1A1A2E)
-val CodeAddition = Color(0xFF1B5E20)
-val CodeDeletion = Color(0xFFB71C1C)
-val CodeLineNumber = Color(0xFF616161)
+// ─── Code Block ──────────────────────────────────────────────────────────────
+val CodeBackground    = Color(0xFF0D1117)   // GitHub dark code bg
+val CodeAddition      = Color(0xFF1A3A2A)   // Green diff bg
+val CodeDeletion      = Color(0xFF3A1A1A)   // Red diff bg
+val CodeLineNumber    = Color(0xFF484860)   // Line number gutter
+
+// ─── Legacy aliases (kept for compatibility) ─────────────────────────────────
+val Primary           = BrandEmerald
+val PrimaryDark       = BrandEmeraldDark
+val PrimaryLight      = BrandEmeraldMuted
+val OnPrimary         = OnEmerald
+val Secondary         = Color(0xFF60A5FA)   // Blue accent
+val SecondaryDark     = Color(0xFF2563EB)
+val OnSecondary       = Color(0xFF000000)
+val DarkBackground    = BrandBackground
+val DarkSurface       = BrandSurface
+val DarkSurfaceVariant= BrandSurfaceHigh
+val DarkOnBackground  = BrandOnBg
+val DarkOnSurface     = BrandOnBg

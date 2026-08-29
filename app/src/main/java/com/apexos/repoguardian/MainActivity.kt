@@ -9,12 +9,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
+import com.apexos.repoguardian.data.preferences.PreferencesManager
 import com.apexos.repoguardian.navigation.NavGraph
 import com.apexos.repoguardian.ui.theme.RepoGuardianTheme
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var preferencesManager: PreferencesManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -25,7 +31,10 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
-                    NavGraph(navController = navController)
+                    NavGraph(
+                        navController = navController,
+                        preferencesManager = preferencesManager
+                    )
                 }
             }
         }

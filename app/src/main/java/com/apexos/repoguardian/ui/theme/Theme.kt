@@ -1,58 +1,61 @@
 package com.apexos.repoguardian.ui.theme
 
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Primary,
-    onPrimary = OnPrimary,
-    primaryContainer = PrimaryDark,
-    secondary = Secondary,
-    onSecondary = OnSecondary,
-    secondaryContainer = SecondaryDark,
-    background = DarkBackground,
-    surface = DarkSurface,
-    surfaceVariant = DarkSurfaceVariant,
-    onBackground = DarkOnBackground,
-    onSurface = DarkOnSurface,
-    error = StatusFail
-)
+// ─── Single authoritative dark scheme ────────────────────────────────────────
+private val RepoGuardianDarkScheme = darkColorScheme(
+    // Brand
+    primary            = BrandEmerald,
+    onPrimary          = OnEmerald,
+    primaryContainer   = BrandEmeraldMuted,
+    onPrimaryContainer = BrandEmerald,
 
-private val LightColorScheme = lightColorScheme(
-    primary = Primary,
-    onPrimary = OnPrimary,
-    primaryContainer = PrimaryLight,
-    secondary = Secondary,
-    onSecondary = OnSecondary,
-    background = Color(0xFFFAFAFA),
-    surface = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    error = StatusFail
+    // Secondary (blue accent for info states)
+    secondary          = Secondary,
+    onSecondary        = OnSecondary,
+    secondaryContainer = Color(0xFF1E3A5F),
+    onSecondaryContainer = Color(0xFF93C5FD),
+
+    // Backgrounds
+    background         = BrandBackground,
+    onBackground       = BrandOnBg,
+
+    // Surfaces
+    surface            = BrandSurface,
+    onSurface          = BrandOnBg,
+    surfaceVariant     = BrandSurfaceHigh,
+    onSurfaceVariant   = BrandOnBgMuted,
+
+    // Outline
+    outline            = BrandBorder,
+    outlineVariant     = BrandSurfaceElev,
+
+    // Error
+    error              = StatusFail,
+    onError            = BrandBackground,
+    errorContainer     = Color(0xFF3A1A1A),
+    onErrorContainer   = StatusFail,
+
+    // Inverse
+    inverseSurface     = BrandOnBg,
+    inverseOnSurface   = BrandBackground,
+    inversePrimary     = BrandEmeraldDark,
+
+    // Scrim / surface tint
+    scrim              = BrandBackground.copy(alpha = 0.8f),
+    surfaceTint        = BrandEmerald
 )
 
 @Composable
 fun RepoGuardianTheme(
-    darkTheme: Boolean = true, // Dark mode default for demo impact
-    dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
+    // Premium products own their design — no dynamic color override.
     MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
+        colorScheme = RepoGuardianDarkScheme,
+        typography  = Typography,
+        content     = content
     )
 }

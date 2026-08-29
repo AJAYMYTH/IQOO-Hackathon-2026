@@ -3,7 +3,6 @@ package com.apexos.repoguardian.ui.splash
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.apexos.repoguardian.data.llm.LlamaService
-import com.apexos.repoguardian.data.llm.ModelState
 import com.apexos.repoguardian.data.preferences.PreferencesManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +15,7 @@ data class SplashUiState(
     val isLoading: Boolean = true,
     val isAuthenticated: Boolean = false,
     val modelLoaded: Boolean = false,
+    val showOnboarding: Boolean = false,
     val error: String? = null
 )
 
@@ -36,13 +36,26 @@ class SplashViewModel @Inject constructor(
     private fun initialize() {
         viewModelScope.launch {
             try {
-                // Check auth
-                _uiState.value = _uiState.value.copy(statusMessage = "Checking authentication...")
+                // Check first-launch for onboarding
+                _uiState.value = _uiState.value.copy(statusMessage = "Loading...")
+                val hasSeenOnboarding = preferencesManager.hasSeenOnboarding()
+
+                if (!hasSeenOnboarding) {
+                    // Show onboarding first — skip loading model until after
+                    _uiState.value = SplashUiState(
+                        statusMessage = "Welcome!",
+                        isLoading = false,
+                        showOnboarding = true
+                    )
+                    return@launch
+                }
+
+                // Returning user — normal initialization
+                _uiState.value = _uiState.value.copy(statusMessage = "Checking account...")
                 val token = preferencesManager.getGitHubToken()
                 val isAuth = token != null
 
-                // Load model
-                _uiState.value = _uiState.value.copy(statusMessage = "Checking AI models...")
+                _uiState.value = _uiState.value.copy(statusMessage = "Loading AI model...")
                 var modelPath = preferencesManager.getModelPath()
                 if (modelPath.isNullOrBlank()) {
                     val downloaded = modelDownloadManager.getDownloadedModels()
@@ -61,10 +74,11 @@ class SplashViewModel @Inject constructor(
                 val modelLoaded = llamaService.isLoaded()
 
                 _uiState.value = SplashUiState(
-                    statusMessage = if (modelLoaded) "Ready!" else "Model not available",
+                    statusMessage = if (modelLoaded) "Ready" else "No model loaded",
                     isLoading = false,
                     isAuthenticated = isAuth,
-                    modelLoaded = modelLoaded
+                    modelLoaded = modelLoaded,
+                    showOnboarding = false
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(

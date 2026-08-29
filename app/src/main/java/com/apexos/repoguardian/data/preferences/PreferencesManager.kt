@@ -25,6 +25,7 @@ class PreferencesManager @Inject constructor(
         private val KEY_BACKEND = stringPreferencesKey("backend") // cpu, gpu, npu
         private val KEY_CUSTOM_RULES = stringPreferencesKey("custom_rules")
         private val KEY_GUIDE_DISMISSED = booleanPreferencesKey("guide_dismissed")
+        private val KEY_ONBOARDING_SEEN = booleanPreferencesKey("onboarding_seen")
     }
 
     // === GitHub Token ===
@@ -128,5 +129,14 @@ class PreferencesManager @Inject constructor(
 
     fun observeGuideDismissed(): Flow<Boolean> {
         return context.dataStore.data.map { it[KEY_GUIDE_DISMISSED] ?: false }
+    }
+
+    // === Onboarding ===
+    suspend fun setOnboardingSeen() {
+        context.dataStore.edit { it[KEY_ONBOARDING_SEEN] = true }
+    }
+
+    suspend fun hasSeenOnboarding(): Boolean {
+        return context.dataStore.data.first()[KEY_ONBOARDING_SEEN] ?: false
     }
 }
