@@ -1,8 +1,11 @@
 package com.apexos.repoguardian.data.llm
 
 object LlamaBridge {
-    init {
+    val isAvailable: Boolean = try {
         System.loadLibrary("llama_bridge")
+        true
+    } catch (e: Throwable) {
+        false
     }
 
     // Load model from GGUF file path, returns model handle (pointer)

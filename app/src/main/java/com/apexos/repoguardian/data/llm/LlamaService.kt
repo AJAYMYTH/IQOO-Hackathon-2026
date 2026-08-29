@@ -36,6 +36,13 @@ class LlamaService @Inject constructor(
             _modelState.value = ModelState.Loading
             Log.d(TAG, "Loading model from: $path")
 
+            if (!LlamaBridge.isAvailable) {
+                Log.w(TAG, "Native library not loaded, enabling mock mode")
+                useMock = true
+                _modelState.value = ModelState.Loaded("Mock Mode (native lib not bundled)")
+                return@withContext
+            }
+
             // Check if path exists
             val file = java.io.File(path)
             if (!file.exists()) {
