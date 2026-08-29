@@ -490,10 +490,9 @@ fun ChatScreen(
                 .padding(horizontal = 14.dp),
             contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
             val nonBlankMessages = uiState.messages.filter { it.content.isNotBlank() || it.isUser }
 
-            items(nonBlankMessages) { message ->
+            items(items = nonBlankMessages, key = { it.id }) { message ->
                 val isStreaming = uiState.isGenerating &&
                         !message.isUser &&
                         message.id == uiState.messages.lastOrNull()?.id
@@ -518,7 +517,7 @@ fun ChatScreen(
 
             // Show clean minimal thinking indicator while AI is preparing first response
             if (uiState.isGenerating && uiState.messages.lastOrNull()?.content.isNullOrBlank()) {
-                item {
+                item(key = "generating_indicator") {
                     AiThinkingIndicator()
                 }
             }
@@ -614,7 +613,7 @@ private fun MessageBubble(
                         }
                     }
 
-                    if (message.content.isNotBlank() && !isStreaming) {
+                    if (message.content.isNotBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -628,7 +627,7 @@ private fun MessageBubble(
                                     border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder.copy(alpha = 0.6f))
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
@@ -653,29 +652,29 @@ private fun MessageBubble(
 
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = BrandSurfaceHigh,
-                                border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder.copy(alpha = 0.6f)),
+                                color = BrandSurfaceElev,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmerald.copy(alpha = 0.4f)),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable { onCopyResponse(message.content) }
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         Icons.Default.ContentCopy,
                                         contentDescription = "Copy Response",
-                                        modifier = Modifier.size(12.dp),
+                                        modifier = Modifier.size(13.dp),
                                         tint = BrandEmeraldLight
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "Copy",
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 10.sp,
+                                        fontSize = 11.sp,
                                         color = BrandEmeraldLight,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
