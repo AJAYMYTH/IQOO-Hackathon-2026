@@ -149,6 +149,17 @@ class GitHubIntegrationTest {
         override suspend fun createPullRequest(owner: String, repo: String, body: CreatePrRequest): PullRequest =
             PullRequest(id = 999L, number = 13, title = body.title, state = "open", htmlUrl = "https://github.com/$owner/$repo/pull/13")
 
+        override suspend fun getPullRequest(owner: String, repo: String, pullNumber: Int): PullRequest =
+            PullRequest(
+                id = pullNumber.toLong(),
+                number = pullNumber,
+                title = "Fix PR #$pullNumber",
+                state = "open",
+                htmlUrl = "https://github.com/$owner/$repo/pull/$pullNumber",
+                head = PrBranch(ref = "repoguardian/fix-branch", sha = "fix-head-sha"),
+                base = PrBranch(ref = "main", sha = "main-sha")
+            )
+
         override suspend fun getCheckRuns(owner: String, repo: String, ref: String): CheckRunsResponse =
             CheckRunsResponse(totalCount = 1, checkRuns = listOf(CheckRun(id = 1L, name = "ci-build", status = "completed", conclusion = "success")))
 

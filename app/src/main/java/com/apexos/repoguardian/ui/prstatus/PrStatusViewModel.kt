@@ -51,8 +51,18 @@ class PrStatusViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
 
+            var targetRef = "main"
+            if (prNumber > 0) {
+                when (val prRes = gitHubRepository.getPullRequest(owner, repo, prNumber)) {
+                    is ApiResult.Success -> {
+                        targetRef = prRes.data.head?.sha?.ifBlank { null } ?: prRes.data.head?.ref ?: "main"
+                    }
+                    else -> {}
+                }
+            }
+
             while (polling) {
-                when (val result = gitHubRepository.getCheckRuns(owner, repo, "main")) {
+                when (val result = gitHubRepository.getCheckRuns(owner, repo, targetRef)) {
                     is ApiResult.Success -> {
                         val runs = result.data.checkRuns
                         if (runs.isEmpty()) {
@@ -60,7 +70,7 @@ class PrStatusViewModel @Inject constructor(
                                 isLoading = false,
                                 isPolling = true,
                                 noRunnerMessage = "No check runs found. This could mean:\n" +
-                                    "• The self-hosted runner is not active (Red Light phase)\n" +
+                                    "• The CI/CD runner is queued or pending\n" +
                                     "• No CI/CD workflow is configured for this repo\n\n" +
                                     "The status will auto-update when a runner becomes available."
                             )

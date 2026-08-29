@@ -82,6 +82,11 @@ class GitHubRepository @Inject constructor(
             dataApi.listPulls(owner, repo, state, perPage)
         }
 
+    suspend fun getPullRequest(owner: String, repo: String, pullNumber: Int): ApiResult<PullRequest> =
+        apiCall("getPullRequest($owner/$repo, #$pullNumber)") {
+            dataApi.getPullRequest(owner, repo, pullNumber)
+        }
+
     suspend fun listIssues(owner: String, repo: String, state: String = "open", perPage: Int = 10): ApiResult<List<GitHubIssue>> =
         apiCall("listIssues($owner/$repo, state=$state, perPage=$perPage)") {
             dataApi.listIssues(owner, repo, state, perPage)

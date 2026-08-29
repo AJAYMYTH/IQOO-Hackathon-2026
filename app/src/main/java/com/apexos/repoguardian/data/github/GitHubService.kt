@@ -47,6 +47,13 @@ interface GitHubDataApi {
         @Body body: CreatePrRequest
     ): PullRequest
 
+    @GET("repos/{owner}/{repo}/pulls/{pull_number}")
+    suspend fun getPullRequest(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("pull_number") pullNumber: Int
+    ): PullRequest
+
     @GET("repos/{owner}/{repo}/commits/{ref}/check-runs")
     suspend fun getCheckRuns(
         @Path("owner") owner: String,
