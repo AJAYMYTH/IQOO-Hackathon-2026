@@ -48,4 +48,26 @@ object PromptBuilder {
             <|im_start|>assistant
         """.trimIndent()
     }
+
+    /**
+     * Build prompt for conversational AI Assistant with optional Deep Thinking.
+     */
+    fun buildChatPrompt(userMessage: String, systemContext: String, isThinkMode: Boolean): String {
+        val thinkingInstruction = if (isThinkMode) {
+            "\nYou must think step-by-step before answering. Write your thorough analysis and reasoning inside <think>...</think> tags, and then provide your final clear, verified solution."
+        } else {
+            "\nProvide a direct, concise, and production-ready solution."
+        }
+
+        return """
+            <|im_start|>system
+            You are Repo Guardian, an advanced on-device AI code reviewer and software engineer.
+            $systemContext$thinkingInstruction
+            <|im_end|>
+            <|im_start|>user
+            $userMessage
+            <|im_end|>
+            <|im_start|>assistant
+        """.trimIndent()
+    }
 }

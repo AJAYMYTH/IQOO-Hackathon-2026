@@ -1,13 +1,17 @@
 package com.apexos.repoguardian.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,6 +29,7 @@ import com.apexos.repoguardian.ui.theme.CodeBackground
 import com.apexos.repoguardian.ui.theme.StatusInfo
 
 sealed class MarkdownBlock {
+    data class Think(val thought: String) : MarkdownBlock()
     data class Header(val level: Int, val text: String) : MarkdownBlock()
     data class Paragraph(val text: String) : MarkdownBlock()
     data class Bullet(val text: String) : MarkdownBlock()
@@ -48,6 +53,67 @@ fun MarkdownContent(
     ) {
         blocks.forEach { block ->
             when (block) {
+                is MarkdownBlock.Think -> {
+                    var isExpanded by remember { mutableStateOf(true) }
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { isExpanded = !isExpanded },
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Psychology,
+                                        contentDescription = "Deep Reasoning",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Deep Reasoning Process",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Icon(
+                                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            if (isExpanded) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                )
+                                Text(
+                                    text = block.thought,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp,
+                                        lineHeight = 18.sp
+                                    ),
+                                    color = textColor.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+                    }
+                }
+
                 is MarkdownBlock.Header -> {
                     val (style, topSpace) = when (block.level) {
                         1 -> MaterialTheme.typography.titleLarge to 12.dp
@@ -204,7 +270,20 @@ fun MarkdownContent(
 
 fun parseMarkdown(raw: String): List<MarkdownBlock> {
     val blocks = mutableListOf<MarkdownBlock>()
-    val lines = raw.lines()
+
+    // Check for <think>...</think> block
+    var processedRaw = raw
+    val thinkRegex = Regex("<think>([\\s\\S]*?)</think>")
+    val thinkMatch = thinkRegex.find(raw)
+    if (thinkMatch != null) {
+        val thought = thinkMatch.groupValues[1].trim()
+        if (thought.isNotBlank()) {
+            blocks.add(MarkdownBlock.Think(thought))
+        }
+        processedRaw = raw.replace(thinkMatch.value, "").trim()
+    }
+
+    val lines = processedRaw.lines()
     var i = 0
 
     while (i < lines.size) {

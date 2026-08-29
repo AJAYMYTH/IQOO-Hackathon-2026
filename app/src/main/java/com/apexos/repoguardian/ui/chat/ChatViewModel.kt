@@ -6,12 +6,14 @@ import com.apexos.repoguardian.data.github.ApiResult
 import com.apexos.repoguardian.data.github.GitHubRepository
 import com.apexos.repoguardian.data.github.models.Commit
 import com.apexos.repoguardian.data.github.models.Repo
+import com.apexos.repoguardian.data.huggingface.ModelDownloadManager
 import com.apexos.repoguardian.data.llm.LlamaService
 import com.apexos.repoguardian.data.preferences.PreferencesManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.UUID
 import javax.inject.Inject
 
@@ -46,8 +48,11 @@ data class ChatUiState(
     val repoName: String = "",
     val availableRepos: List<Repo> = emptyList(),
     val isRepoDropdownOpen: Boolean = false,
+    val downloadedModels: List<File> = emptyList(),
+    val isModelDropdownOpen: Boolean = false,
+    val isThinkModeEnabled: Boolean = true,
     val recentCommits: List<Commit> = emptyList(),
-    val activeModelName: String = "On-Device LLM",
+    val activeModelName: String = "No Model Loaded",
     val error: String? = null
 )
 
@@ -55,7 +60,8 @@ data class ChatUiState(
 class ChatViewModel @Inject constructor(
     private val llamaService: LlamaService,
     private val gitHubRepository: GitHubRepository,
-    private val preferencesManager: PreferencesManager
+    private val preferencesManager: PreferencesManager,
+    private val modelDownloadManager: ModelDownloadManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -106,22 +112,34 @@ class ChatViewModel @Inject constructor(
     fun loadInitialContext() {
         viewModelScope.launch {
             val selectedRepo = preferencesManager.getSelectedRepo()
-            val modelPath = preferencesManager.getModelPath()
-            val modelName = if (!modelPath.isNullOrBlank()) {
-                java.io.File(modelPath).nameWithoutExtension
-            } else {
-                "Qwen2.5-Coder (Default)"
+            val downloaded = modelDownloadManager.getDownloadedModels()
+            var modelPath = preferencesManager.getModelPath()
+
+            // If no model path set, but downloaded models exist, auto-select the first one
+            if (modelPath.isNullOrBlank() && downloaded.isNotEmpty()) {
+                val firstModel = downloaded.first()
+                modelPath = firstModel.absolutePath
+                preferencesManager.saveModelPath(modelPath)
+                llamaService.loadModel(modelPath)
             }
+
+            val modelName = if (!modelPath.isNullOrBlank()) {
+                File(modelPath).nameWithoutExtension
+            } else {
+                "No Model Loaded"
+            }
+
+            _uiState.value = _uiState.value.copy(
+                downloadedModels = downloaded,
+                activeModelName = modelName
+            )
 
             if (selectedRepo != null) {
                 _uiState.value = _uiState.value.copy(
                     repoOwner = selectedRepo.first,
-                    repoName = selectedRepo.second,
-                    activeModelName = modelName
+                    repoName = selectedRepo.second
                 )
                 loadRepoCommits(selectedRepo.first, selectedRepo.second)
-            } else {
-                _uiState.value = _uiState.value.copy(activeModelName = modelName)
             }
 
             // Load user repos for switcher
@@ -139,7 +157,7 @@ class ChatViewModel @Inject constructor(
                 val welcome = """
 ### Repo Guardian AI Assistant
 
-Connected to repository `$owner/$repo` with on-device model `$modelName`.
+Connected to repository `$owner/$repo` with model `$modelName`.
 
 You can ask questions about your code, request deep repository explanations, perform security commit audits, and generate CI/CD pipelines and unit test suites.
 
@@ -163,8 +181,39 @@ Select any quick action below or type a query to begin.
         }
     }
 
+    fun toggleThinkMode() {
+        _uiState.value = _uiState.value.copy(isThinkModeEnabled = !_uiState.value.isThinkModeEnabled)
+    }
+
     fun setRepoDropdownOpen(open: Boolean) {
         _uiState.value = _uiState.value.copy(isRepoDropdownOpen = open)
+    }
+
+    fun setModelDropdownOpen(open: Boolean) {
+        _uiState.value = _uiState.value.copy(isModelDropdownOpen = open)
+    }
+
+    fun switchModel(modelFile: File) {
+        viewModelScope.launch {
+            val path = modelFile.absolutePath
+            val backend = preferencesManager.getBackend()
+            val gpuLayers = if (backend == "gpu" || backend == "npu") 33 else 0
+
+            llamaService.unload()
+            llamaService.loadModel(path, gpuLayers)
+            preferencesManager.saveModelPath(path)
+
+            val modelName = modelFile.nameWithoutExtension
+            _uiState.value = _uiState.value.copy(
+                activeModelName = modelName,
+                isModelDropdownOpen = false
+            )
+
+            val notice = "Switched active AI model to **$modelName**."
+            _uiState.value = _uiState.value.copy(
+                messages = _uiState.value.messages + ChatMessage(content = notice, isUser = false)
+            )
+        }
     }
 
     fun switchRepo(repo: Repo) {
@@ -207,15 +256,16 @@ Select any quick action below or type a query to begin.
                 }
 
                 val systemPrompt = """
-You are Repo Guardian, an expert on-device AI software engineer, code reviewer, and CI/CD architect.
 Active Repository: ${_uiState.value.repoOwner}/${_uiState.value.repoName}
 Recent Commits in Context:
 $commitsSummary
-
-Provide clear, structured, and production-ready responses with complete code snippets, markdown formatting, and best practices.
                 """.trimIndent()
 
-                val response = llamaService.chat(userText.trim(), systemPrompt)
+                val response = llamaService.chat(
+                    userMessage = userText.trim(),
+                    systemPrompt = systemPrompt,
+                    isThinkMode = _uiState.value.isThinkModeEnabled
+                )
                 val aiMessage = ChatMessage(content = response, isUser = false)
 
                 _uiState.value = _uiState.value.copy(

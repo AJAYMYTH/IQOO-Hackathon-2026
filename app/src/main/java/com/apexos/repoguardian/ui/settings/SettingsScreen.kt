@@ -255,10 +255,10 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
                         text = when (val state = uiState.modelState) {
-                            is ModelState.Loaded -> "Model: ${state.info}"
+                            is ModelState.Loaded -> state.modelInfo
                             is ModelState.Error -> "Error: ${state.message}"
                             is ModelState.Loading -> "Loading model..."
-                            else -> "No model loaded (Mock Mode active)"
+                            else -> "No model loaded. Download or select a GGUF model"
                         },
                         style = MaterialTheme.typography.bodyMedium
                     )

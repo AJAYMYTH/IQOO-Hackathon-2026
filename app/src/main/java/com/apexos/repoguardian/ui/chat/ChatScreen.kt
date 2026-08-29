@@ -15,6 +15,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.FactCheck
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -29,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.apexos.repoguardian.navigation.Routes
 import com.apexos.repoguardian.ui.components.AiThinkingIndicator
 import com.apexos.repoguardian.ui.components.MarkdownContent
 import com.apexos.repoguardian.ui.theme.StatusPass
@@ -55,70 +58,184 @@ fun ChatScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Box {
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { viewModel.setRepoDropdownOpen(true) }
-                                .padding(horizontal = 6.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 1. Repo Switcher Dropdown
+                        Box(modifier = Modifier.weight(1f)) {
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { viewModel.setRepoDropdownOpen(true) }
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = uiState.repoName.ifBlank { "AI Assistant" },
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Icon(
+                                            Icons.Default.ArrowDropDown,
+                                            contentDescription = "Switch Repo",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                     Text(
-                                        text = uiState.repoName.ifBlank { "AI Assistant" },
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(
-                                        Icons.Default.ArrowDropDown,
-                                        contentDescription = "Switch Repo",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp)
+                                        text = uiState.repoOwner.ifBlank { "AJAYMYTH" },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                        maxLines = 1
                                     )
                                 }
+                            }
+
+                            DropdownMenu(
+                                expanded = uiState.isRepoDropdownOpen,
+                                onDismissRequest = { viewModel.setRepoDropdownOpen(false) }
+                            ) {
                                 Text(
-                                    text = uiState.activeModelName,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    text = "Switch Repository Context",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                                 )
+                                HorizontalDivider()
+                                uiState.availableRepos.forEach { repo ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = repo.fullName,
+                                                    fontWeight = if (repo.name == uiState.repoName) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                                if (repo.name == uiState.repoName) {
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Icon(
+                                                        Icons.Default.Check,
+                                                        contentDescription = "Active",
+                                                        tint = StatusPass,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        onClick = { viewModel.switchRepo(repo) }
+                                    )
+                                }
                             }
                         }
 
-                        DropdownMenu(
-                            expanded = uiState.isRepoDropdownOpen,
-                            onDismissRequest = { viewModel.setRepoDropdownOpen(false) }
-                        ) {
-                            Text(
-                                text = "Switch Repository Context",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            )
-                            HorizontalDivider()
-                            uiState.availableRepos.forEach { repo ->
+                        // 2. Model Selector Dropdown
+                        Box {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { viewModel.setModelDropdownOpen(true) }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Memory,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = uiState.activeModelName.take(12),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Icon(
+                                        Icons.Default.ArrowDropDown,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = uiState.isModelDropdownOpen,
+                                onDismissRequest = { viewModel.setModelDropdownOpen(false) }
+                            ) {
+                                Text(
+                                    text = "Select On-Device Model",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                                HorizontalDivider()
+
+                                if (uiState.downloadedModels.isEmpty()) {
+                                    DropdownMenuItem(
+                                        text = { Text("No Models Downloaded") },
+                                        onClick = { }
+                                    )
+                                } else {
+                                    uiState.downloadedModels.forEach { modelFile ->
+                                        val isActive = modelFile.nameWithoutExtension == uiState.activeModelName
+                                        val sizeMb = modelFile.length().toDouble() / (1024.0 * 1024.0)
+                                        val sizeText = if (sizeMb >= 1024.0) String.format("%.2f GB", sizeMb / 1024.0) else String.format("%.0f MB", sizeMb)
+
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column {
+                                                        Text(
+                                                            text = modelFile.nameWithoutExtension,
+                                                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+                                                        )
+                                                        Text(
+                                                            text = sizeText,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                                        )
+                                                    }
+                                                    if (isActive) {
+                                                        Icon(
+                                                            Icons.Default.Check,
+                                                            contentDescription = "Active",
+                                                            tint = StatusPass,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                            onClick = { viewModel.switchModel(modelFile) }
+                                        )
+                                    }
+                                }
+
+                                HorizontalDivider()
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = repo.fullName,
-                                                fontWeight = if (repo.name == uiState.repoName) FontWeight.Bold else FontWeight.Normal
-                                            )
-                                            if (repo.name == uiState.repoName) {
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Icon(
-                                                    Icons.Default.Check,
-                                                    contentDescription = "Active",
-                                                    tint = StatusPass,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
+                                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Manage & Download Models")
                                         }
                                     },
-                                    onClick = { viewModel.switchRepo(repo) }
+                                    onClick = {
+                                        viewModel.setModelDropdownOpen(false)
+                                        navController.navigate(Routes.MODEL_BROWSER)
+                                    }
                                 )
                             }
                         }
@@ -145,28 +262,55 @@ fun ChatScreen(
             ) {
                 HorizontalDivider()
 
-                // Quick Prompt Chips with Material Icons
-                LazyRow(
+                // Think Mode Toggle & Quick Prompt Chips
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    items(viewModel.quickPrompts) { quickPrompt ->
-                        val icon = getCategoryIcon(quickPrompt.category)
-                        SuggestionChip(
-                            onClick = { viewModel.sendMessage(quickPrompt.prompt) },
-                            icon = {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            },
-                            label = { Text(quickPrompt.title, fontWeight = FontWeight.Medium) },
-                            shape = RoundedCornerShape(8.dp)
-                        )
+                    // Think Mode Toggle Button
+                    FilterChip(
+                        selected = uiState.isThinkModeEnabled,
+                        onClick = { viewModel.toggleThinkMode() },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Psychology,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        label = {
+                            Text(
+                                text = if (uiState.isThinkModeEnabled) "Think ON" else "Think OFF",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        shape = RoundedCornerShape(8.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(viewModel.quickPrompts) { quickPrompt ->
+                            val icon = getCategoryIcon(quickPrompt.category)
+                            SuggestionChip(
+                                onClick = { viewModel.sendMessage(quickPrompt.prompt) },
+                                icon = {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                },
+                                label = { Text(quickPrompt.title, fontWeight = FontWeight.Medium) },
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                        }
                     }
                 }
 
@@ -174,7 +318,7 @@ fun ChatScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedTextField(
@@ -324,10 +468,10 @@ private fun MessageBubble(
 }
 
 private fun getCategoryIcon(category: PromptCategory): ImageVector = when (category) {
-    PromptCategory.EXPLAIN -> Icons.Default.MenuBook
+    PromptCategory.EXPLAIN -> Icons.AutoMirrored.Filled.MenuBook
     PromptCategory.REVIEW -> Icons.Default.BugReport
     PromptCategory.CICD -> Icons.Default.Terminal
-    PromptCategory.TESTS -> Icons.Default.FactCheck
+    PromptCategory.TESTS -> Icons.AutoMirrored.Filled.FactCheck
     PromptCategory.RELEASE -> Icons.Default.RocketLaunch
     PromptCategory.SECURITY -> Icons.Default.Security
     PromptCategory.PERFORMANCE -> Icons.Default.Speed

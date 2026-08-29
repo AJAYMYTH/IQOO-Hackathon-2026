@@ -22,7 +22,8 @@ data class SplashUiState(
 @HiltViewModel
 class SplashViewModel @Inject constructor(
     private val llamaService: LlamaService,
-    private val preferencesManager: PreferencesManager
+    private val preferencesManager: PreferencesManager,
+    private val modelDownloadManager: com.apexos.repoguardian.data.huggingface.ModelDownloadManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SplashUiState())
@@ -41,19 +42,20 @@ class SplashViewModel @Inject constructor(
                 val isAuth = token != null
 
                 // Load model
-                _uiState.value = _uiState.value.copy(statusMessage = "Loading AI model...")
-                val modelPath = preferencesManager.getModelPath()
-                if (modelPath != null) {
-                    val backend = preferencesManager.getBackend()
-                    val gpuLayers = when (backend) {
-                        "gpu" -> 99
-                        "npu" -> 99
-                        else -> 0
+                _uiState.value = _uiState.value.copy(statusMessage = "Checking AI models...")
+                var modelPath = preferencesManager.getModelPath()
+                if (modelPath.isNullOrBlank()) {
+                    val downloaded = modelDownloadManager.getDownloadedModels()
+                    if (downloaded.isNotEmpty()) {
+                        modelPath = downloaded.first().absolutePath
+                        preferencesManager.saveModelPath(modelPath)
                     }
+                }
+
+                if (!modelPath.isNullOrBlank()) {
+                    val backend = preferencesManager.getBackend()
+                    val gpuLayers = if (backend == "gpu" || backend == "npu") 33 else 0
                     llamaService.loadModel(modelPath, gpuLayers)
-                } else {
-                    // No model configured, load in mock mode
-                    llamaService.loadModel("/nonexistent", 0)
                 }
 
                 val modelLoaded = llamaService.isLoaded()

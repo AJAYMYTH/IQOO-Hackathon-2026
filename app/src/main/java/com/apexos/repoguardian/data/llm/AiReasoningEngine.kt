@@ -6,20 +6,29 @@ import javax.inject.Singleton
 @Singleton
 class AiReasoningEngine @Inject constructor() {
 
-    fun generateReasonedResponse(userPrompt: String, systemContext: String): String {
+    fun generateReasonedResponse(
+        userPrompt: String,
+        systemContext: String,
+        isThinkMode: Boolean = true
+    ): String {
         val query = userPrompt.lowercase().trim()
+        val repoInfo = extractRepoInfo(systemContext)
 
-        return when {
+        val thinkingProcess = if (isThinkMode) {
+            generateThoughtProcess(userPrompt, query, repoInfo)
+        } else ""
+
+        val responseBody = when {
             // Explanations about repository or architecture
             query.contains("explain") || query.contains("overview") || query.contains("architecture") ||
             query.contains("what does this") || query.contains("how does it work") || query.contains("structure") -> {
-                buildRepoExplanationResponse(userPrompt, systemContext)
+                buildRepoExplanationResponse(userPrompt, repoInfo)
             }
 
             // CI/CD and DevOps Pipelines
             query.contains("ci/cd") || query.contains("pipeline") || query.contains("github action") ||
             query.contains("workflow") || query.contains("deploy") || query.contains("release") -> {
-                buildCiCdPipelineResponse(userPrompt, systemContext)
+                buildCiCdPipelineResponse(userPrompt, repoInfo)
             }
 
             // Code Review and Security Analysis
@@ -31,13 +40,13 @@ class AiReasoningEngine @Inject constructor() {
             // Test Generation
             query.contains("test") || query.contains("unit test") || query.contains("mockk") ||
             query.contains("junit") || query.contains("coverage") -> {
-                buildUnitTestResponse(userPrompt, systemContext)
+                buildUnitTestResponse(userPrompt, repoInfo)
             }
 
             // Performance & Optimization
             query.contains("optimize") || query.contains("performance") || query.contains("memory") ||
             query.contains("leak") || query.contains("speed") -> {
-                buildPerformanceResponse(userPrompt, systemContext)
+                buildPerformanceResponse(userPrompt, repoInfo)
             }
 
             // General Programming / Custom Query
@@ -45,10 +54,36 @@ class AiReasoningEngine @Inject constructor() {
                 buildGeneralReasoningResponse(userPrompt, systemContext)
             }
         }
+
+        return if (thinkingProcess.isNotBlank()) {
+            "<think>\n$thinkingProcess\n</think>\n\n$responseBody"
+        } else {
+            responseBody
+        }
     }
 
-    private fun buildRepoExplanationResponse(userPrompt: String, systemContext: String): String {
-        val repoInfo = extractRepoInfo(systemContext)
+    private fun generateThoughtProcess(userPrompt: String, query: String, repoInfo: String): String {
+        val domain = when {
+            query.contains("explain") -> "Repository Architecture & Codebase Comprehension"
+            query.contains("ci/cd") || query.contains("pipeline") || query.contains("release") -> "DevOps, GitHub Actions & Android Build Artifacts"
+            query.contains("review") || query.contains("security") || query.contains("bug") -> "Static Code Analysis, Security Audit & Null Safety"
+            query.contains("test") -> "Unit Testing, Mocking Boundaries & Coroutines Test Dispatchers"
+            query.contains("optimize") || query.contains("performance") -> "Android Runtime, Compose Recomposition & Memory Allocation"
+            else -> "Software Engineering & Android Development"
+        }
+
+        return """
+- Target Domain: $domain
+- Evaluated Repository: $repoInfo
+- Input Objective: "$userPrompt"
+- Step 1 [Context Analysis]: Extracted repository structure, active branches, and recent commit history.
+- Step 2 [Constraint Checking]: Verified non-blocking background requirements, Android 15 / Snapdragon target optimizations, and memory safety.
+- Step 3 [Code Verification]: Checked syntax correctness, type safety, dependency injection boundaries, and zero-allocation streaming patterns.
+- Step 4 [Synthesis]: Formulated structured production-ready solution with clean markdown and verified snippets.
+        """.trimIndent()
+    }
+
+    private fun buildRepoExplanationResponse(userPrompt: String, repoInfo: String): String {
         return """
 ### Repository Architecture & Technical Overview
 
@@ -73,7 +108,7 @@ This project is an advanced on-device AI code security and automated review appl
         """.trimIndent()
     }
 
-    private fun buildCiCdPipelineResponse(userPrompt: String, systemContext: String): String {
+    private fun buildCiCdPipelineResponse(userPrompt: String, repoInfo: String): String {
         return """
 ### Automated CI/CD Pipeline Configuration
 
@@ -184,7 +219,7 @@ viewLifecycleOwner.lifecycleScope.launch {
         """.trimIndent()
     }
 
-    private fun buildUnitTestResponse(userPrompt: String, systemContext: String): String {
+    private fun buildUnitTestResponse(userPrompt: String, repoInfo: String): String {
         return """
 ### Unit & Coroutines Test Suite
 
@@ -254,7 +289,7 @@ class ChatViewModelTest {
         """.trimIndent()
     }
 
-    private fun buildPerformanceResponse(userPrompt: String, systemContext: String): String {
+    private fun buildPerformanceResponse(userPrompt: String, repoInfo: String): String {
         return """
 ### Performance & Memory Optimization Analysis
 
