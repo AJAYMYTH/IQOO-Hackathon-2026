@@ -182,6 +182,9 @@ fun DashboardScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.openGuide() }) {
+                        Icon(Icons.Default.HelpOutline, contentDescription = "Quick Guide")
+                    }
                     IconButton(onClick = { navController.navigate(Routes.CHAT) }) {
                         Icon(Icons.Default.Chat, contentDescription = "AI Chat Assistant", tint = MaterialTheme.colorScheme.primary)
                     }
@@ -191,6 +194,9 @@ fun DashboardScreen(
                         )
                     }) {
                         Icon(Icons.Default.Build, contentDescription = "CI/CD Generator")
+                    }
+                    IconButton(onClick = { navController.navigate(Routes.MODEL_BROWSER) }) {
+                        Icon(Icons.Default.Download, contentDescription = "AI Models")
                     }
                     IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
@@ -305,6 +311,14 @@ fun DashboardScreen(
                 }
             }
         }
+    }
+
+    if (uiState.isGuideOpen) {
+        com.apexos.repoguardian.ui.components.NonTechGuideDialog(
+            onDismiss = { dontShowAgain ->
+                viewModel.dismissGuide(dontShowAgain)
+            }
+        )
     }
 }
 

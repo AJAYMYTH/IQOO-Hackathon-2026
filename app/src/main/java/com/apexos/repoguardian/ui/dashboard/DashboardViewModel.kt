@@ -22,6 +22,7 @@ data class DashboardUiState(
     val commits: List<Commit> = emptyList(),
     val isLoading: Boolean = false,
     val isDropdownOpen: Boolean = false,
+    val isGuideOpen: Boolean = false,
     val error: String? = null
 )
 
@@ -38,8 +39,31 @@ class DashboardViewModel @Inject constructor(
     val voiceState: StateFlow<VoiceState> = voiceService.state
 
     init {
+        checkGuideStatus()
         loadDashboard()
         loadAvailableRepos()
+    }
+
+    private fun checkGuideStatus() {
+        viewModelScope.launch {
+            val dismissed = preferencesManager.isGuideDismissed()
+            if (!dismissed) {
+                _uiState.value = _uiState.value.copy(isGuideOpen = true)
+            }
+        }
+    }
+
+    fun openGuide() {
+        _uiState.value = _uiState.value.copy(isGuideOpen = true)
+    }
+
+    fun dismissGuide(dontShowAgain: Boolean) {
+        viewModelScope.launch {
+            if (dontShowAgain) {
+                preferencesManager.setGuideDismissed(true)
+            }
+            _uiState.value = _uiState.value.copy(isGuideOpen = false)
+        }
     }
 
     fun loadAvailableRepos() {

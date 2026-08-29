@@ -5,7 +5,7 @@ import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class HfModelSearchResult(
-    val id: String, // e.g. "TheBloke/Qwen2.5-Coder-3B-Instruct-GGUF"
+    val id: String, // e.g. "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF"
     val author: String? = null,
     @Json(name = "lastModified") val lastModified: String? = null,
     val tags: List<String> = emptyList(),
@@ -35,6 +35,7 @@ data class FeaturedModel(
     val filename: String,
     val sizeBytes: Long,
     val quant: String,
+    val categoryBadge: String,
     val recommendedFor: String
 ) {
     val sizeFormatted: String get() {
@@ -45,40 +46,54 @@ data class FeaturedModel(
 
 val FEATURED_MODELS = listOf(
     FeaturedModel(
-        id = "Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF",
-        name = "Qwen2.5-Coder 0.5B (Ultra Fast)",
-        description = "Lightweight 0.5B coding model. Instant token generation, minimal battery usage.",
-        filename = "qwen2.5-coder-0.5b-instruct-q4_k_m.gguf",
-        sizeBytes = 398L * 1024 * 1024,
-        quant = "Q4_K_M",
-        recommendedFor = "Fastest reviews, low RAM usage (under 600MB)"
-    ),
-    FeaturedModel(
-        id = "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
-        name = "Qwen2.5-Coder 1.5B (Balanced)",
-        description = "Great balance between reasoning capabilities and speed on mobile devices.",
-        filename = "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
-        sizeBytes = 986L * 1024 * 1024,
-        quant = "Q4_K_M",
-        recommendedFor = "Recommended default for daily mobile reviews"
-    ),
-    FeaturedModel(
-        id = "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
-        name = "Qwen2.5-Coder 3B (Pro Quality)",
-        description = "State-of-the-art code analysis and vulnerability detection model.",
-        filename = "qwen2.5-coder-3b-instruct-q4_k_m.gguf",
-        sizeBytes = 1950L * 1024 * 1024,
-        quant = "Q4_K_M",
-        recommendedFor = "Deep vulnerability checks & complex diffs"
-    ),
-    FeaturedModel(
         id = "bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
-        name = "DeepSeek-R1 Distill 1.5B (Reasoning)",
-        description = "Reinforcement-learning reasoned code logic model.",
+        name = "DeepSeek-R1 Distill 1.5B (Deep Reasoning)",
+        description = "Advanced reinforcement-learning reasoning model specialized in step-by-step chain-of-thought, mathematical deduction, and deep bug discovery.",
         filename = "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
         sizeBytes = 1120L * 1024 * 1024,
         quant = "Q4_K_M",
-        recommendedFor = "Step-by-step logical reasoning on diffs"
+        categoryBadge = "Deep Reasoning & Thinking",
+        recommendedFor = "Chain-of-thought reasoning, multi-step problem solving & logic verification"
+    ),
+    FeaturedModel(
+        id = "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
+        name = "Qwen2.5-Coder 1.5B (Code Specialist)",
+        description = "Alibaba's premier code intelligence model fine-tuned for syntax verification, automated refactoring, and unit test generation.",
+        filename = "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        sizeBytes = 986L * 1024 * 1024,
+        quant = "Q4_K_M",
+        categoryBadge = "Code Generation & Review",
+        recommendedFor = "Recommended default for daily mobile code reviews, diff fixes & test generation"
+    ),
+    FeaturedModel(
+        id = "Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF",
+        name = "Qwen2.5-Coder 0.5B (Ultra Fast Mobile)",
+        description = "Ultra-compact 0.5B coding engine. Near-instant token generation with under 500MB RAM footprint.",
+        filename = "qwen2.5-coder-0.5b-instruct-q4_k_m.gguf",
+        sizeBytes = 398L * 1024 * 1024,
+        quant = "Q4_K_M",
+        categoryBadge = "Fast Code Inspection",
+        recommendedFor = "Instant commit diff inspections with minimal battery and RAM usage"
+    ),
+    FeaturedModel(
+        id = "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
+        name = "Qwen2.5-Coder 3B (Pro Reasoning & Audit)",
+        description = "Comprehensive 3B code reasoning model capable of multi-file vulnerability analysis, architecture synthesis, and security audits.",
+        filename = "qwen2.5-coder-3b-instruct-q4_k_m.gguf",
+        sizeBytes = 1950L * 1024 * 1024,
+        quant = "Q4_K_M",
+        categoryBadge = "Pro Code Reasoning",
+        recommendedFor = "Deep security audits, architecture breakdowns & complex CI/CD synthesis"
+    ),
+    FeaturedModel(
+        id = "bartowski/Phi-3.5-mini-instruct-GGUF",
+        name = "Phi-3.5 Mini 3.8B (Logical Reasoning)",
+        description = "Microsoft's high-reasoning small language model with advanced multilingual, reasoning, and multi-turn logic capabilities.",
+        filename = "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+        sizeBytes = 2150L * 1024 * 1024,
+        quant = "Q4_K_M",
+        categoryBadge = "Logic & Mathematics",
+        recommendedFor = "Multi-step logic reasoning, algorithmic analysis, and complex code explanation"
     )
 )
 
@@ -99,19 +114,17 @@ data class DownloadProgress(
     }
 
     val etaFormatted: String get() {
-        if (etaSeconds <= 0) return "Calculating..."
+        if (etaSeconds <= 0) return "--"
         val mins = etaSeconds / 60
         val secs = etaSeconds % 60
-        return if (mins > 0) "${mins}m ${secs}s remaining" else "${secs}s remaining"
+        return if (mins > 0) "${mins}m ${secs}s" else "${secs}s"
     }
 
     val downloadedFormatted: String get() {
-        val curMb = bytesDownloaded.toDouble() / (1024.0 * 1024.0)
-        val totMb = totalBytes.toDouble() / (1024.0 * 1024.0)
-        return if (totMb >= 1024.0) {
-            String.format("%.2f GB / %.2f GB", curMb / 1024.0, totMb / 1024.0)
-        } else {
-            String.format("%.1f MB / %.1f MB", curMb, totMb)
-        }
+        val dlMb = bytesDownloaded.toDouble() / (1024.0 * 1024.0)
+        val totalMb = totalBytes.toDouble() / (1024.0 * 1024.0)
+        return String.format("%.1f / %.1f MB (%.0f%%)", dlMb, totalMb, progressPercent * 100)
     }
+
+    val progressText: String get() = downloadedFormatted
 }

@@ -2,9 +2,7 @@ package com.apexos.repoguardian.data.preferences
 
 import android.content.Context
 import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -26,6 +24,7 @@ class PreferencesManager @Inject constructor(
         private val KEY_MODEL_PATH = stringPreferencesKey("model_path")
         private val KEY_BACKEND = stringPreferencesKey("backend") // cpu, gpu, npu
         private val KEY_CUSTOM_RULES = stringPreferencesKey("custom_rules")
+        private val KEY_GUIDE_DISMISSED = booleanPreferencesKey("guide_dismissed")
     }
 
     // === GitHub Token ===
@@ -116,5 +115,18 @@ class PreferencesManager @Inject constructor(
 
     fun observeCustomRules(): Flow<String> {
         return context.dataStore.data.map { it[KEY_CUSTOM_RULES] ?: "" }
+    }
+
+    // === Non-Techy Guide Dismissed ===
+    suspend fun setGuideDismissed(dismissed: Boolean) {
+        context.dataStore.edit { it[KEY_GUIDE_DISMISSED] = dismissed }
+    }
+
+    suspend fun isGuideDismissed(): Boolean {
+        return context.dataStore.data.first()[KEY_GUIDE_DISMISSED] ?: false
+    }
+
+    fun observeGuideDismissed(): Flow<Boolean> {
+        return context.dataStore.data.map { it[KEY_GUIDE_DISMISSED] ?: false }
     }
 }

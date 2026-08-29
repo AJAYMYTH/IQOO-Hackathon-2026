@@ -96,6 +96,8 @@ fun ModelBrowserScreen(
         )
     }
 
+    var showGuide by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -116,6 +118,11 @@ fun ModelBrowserScreen(
                         }
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showGuide = true }) {
+                        Icon(Icons.Default.HelpOutline, contentDescription = "Quick Guide")
                     }
                 }
             )
@@ -210,6 +217,12 @@ fun ModelBrowserScreen(
                 ModelFilesView(selected = selected, uiState = uiState, viewModel = viewModel)
             }
         }
+    }
+
+    if (showGuide) {
+        com.apexos.repoguardian.ui.components.NonTechGuideDialog(
+            onDismiss = { showGuide = false }
+        )
     }
 }
 
@@ -306,16 +319,42 @@ private fun FeaturedModelCard(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = model.quant,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Icon(
+                        Icons.Default.Psychology,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = model.quant,
+                        text = model.categoryBadge,
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
                 }
             }

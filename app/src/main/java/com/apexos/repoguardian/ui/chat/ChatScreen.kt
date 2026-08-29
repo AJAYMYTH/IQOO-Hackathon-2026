@@ -45,6 +45,7 @@ fun ChatScreen(
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
     var inputText by remember { mutableStateOf("") }
+    var showGuide by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     // Auto-scroll on new message
@@ -247,6 +248,9 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showGuide = true }) {
+                        Icon(Icons.Default.HelpOutline, contentDescription = "Quick Guide")
+                    }
                     IconButton(onClick = { viewModel.clearChat() }) {
                         Icon(Icons.Default.DeleteOutline, contentDescription = "Clear Chat")
                     }
@@ -386,6 +390,12 @@ fun ChatScreen(
                 }
             }
         }
+    }
+
+    if (showGuide) {
+        com.apexos.repoguardian.ui.components.NonTechGuideDialog(
+            onDismiss = { showGuide = false }
+        )
     }
 }
 
