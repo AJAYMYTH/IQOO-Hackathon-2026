@@ -152,7 +152,7 @@ class GitHubRepository @Inject constructor(
         repo: String,
         yamlContent: String,
         workflowName: String,
-        branch: String = "main"
+        branch: String? = null
     ): ApiResult<FileCommitResponse> = apiCall("commitWorkflowFile($owner/$repo, name=$workflowName)") {
         val path = ".github/workflows/$workflowName.yml"
         val encodedContent = Base64.encodeToString(
@@ -160,9 +160,21 @@ class GitHubRepository @Inject constructor(
             Base64.NO_WRAP
         )
 
+        // Resolve target branch (use passed branch or query repo default_branch)
+        val targetBranch = if (!branch.isNullOrBlank()) {
+            branch
+        } else {
+            try {
+                val repoDetail = dataApi.getRepo(owner, repo)
+                if (repoDetail.defaultBranch.isNotBlank()) repoDetail.defaultBranch else null
+            } catch (e: Exception) {
+                null
+            }
+        }
+
         // Try to get existing file SHA (null if new file)
         val existingSha: String? = try {
-            val fileRes = dataApi.getFileContent(owner, repo, path)
+            val fileRes = dataApi.getFileContent(owner, repo, path, ref = targetBranch)
             if (fileRes.sha.isNotBlank()) fileRes.sha else null
         } catch (e: Exception) {
             null
@@ -174,7 +186,7 @@ class GitHubRepository @Inject constructor(
                 message = "Add CI/CD workflow: $workflowName (via Repo Guardian)",
                 content = encodedContent,
                 sha = existingSha,
-                branch = branch
+                branch = targetBranch
             )
         )
     }

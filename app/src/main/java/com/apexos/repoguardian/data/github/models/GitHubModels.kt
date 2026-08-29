@@ -204,7 +204,7 @@ data class UpdateFileRequest(
     val message: String,
     val content: String, // Base64-encoded
     val sha: String? = null, // SHA of the file being replaced (null when creating new file)
-    val branch: String
+    val branch: String? = null
 )
 
 @JsonClass(generateAdapter = true)
