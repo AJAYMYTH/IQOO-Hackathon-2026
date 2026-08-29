@@ -29,7 +29,7 @@ import com.apexos.repoguardian.ui.theme.CodeBackground
 import com.apexos.repoguardian.ui.theme.StatusInfo
 
 sealed class MarkdownBlock {
-    data class Think(val thought: String) : MarkdownBlock()
+    data class Think(val thought: String, val isStreaming: Boolean = false) : MarkdownBlock()
     data class Header(val level: Int, val text: String) : MarkdownBlock()
     data class Paragraph(val text: String) : MarkdownBlock()
     data class Bullet(val text: String) : MarkdownBlock()
@@ -61,7 +61,7 @@ fun MarkdownContent(
                             .padding(vertical = 4.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                         )
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
@@ -75,17 +75,25 @@ fun MarkdownContent(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         Icons.Default.Psychology,
-                                        contentDescription = "Deep Reasoning",
+                                        contentDescription = "Thinking",
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "Deep Reasoning Process",
+                                        text = if (block.isStreaming) "Thinking..." else "Thought Process",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary
                                     )
+                                    if (block.isStreaming) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(12.dp),
+                                            strokeWidth = 1.5.dp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                                 Icon(
                                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -103,7 +111,7 @@ fun MarkdownContent(
                                 Text(
                                     text = block.thought,
                                     style = MaterialTheme.typography.bodySmall.copy(
-                                        fontFamily = FontFamily.Monospace,
+                                        fontStyle = FontStyle.Italic,
                                         fontSize = 12.sp,
                                         lineHeight = 18.sp
                                     ),
@@ -271,16 +279,23 @@ fun MarkdownContent(
 fun parseMarkdown(raw: String): List<MarkdownBlock> {
     val blocks = mutableListOf<MarkdownBlock>()
 
-    // Check for <think>...</think> block
+    // Check for <think>...</think> block or in-progress <think>...
     var processedRaw = raw
     val thinkRegex = Regex("<think>([\\s\\S]*?)</think>")
     val thinkMatch = thinkRegex.find(raw)
     if (thinkMatch != null) {
         val thought = thinkMatch.groupValues[1].trim()
         if (thought.isNotBlank()) {
-            blocks.add(MarkdownBlock.Think(thought))
+            blocks.add(MarkdownBlock.Think(thought, isStreaming = false))
         }
         processedRaw = raw.replace(thinkMatch.value, "").trim()
+    } else if (raw.contains("<think>")) {
+        val startIdx = raw.indexOf("<think>")
+        val thought = raw.substring(startIdx + 7).trim()
+        if (thought.isNotBlank()) {
+            blocks.add(MarkdownBlock.Think(thought, isStreaming = true))
+        }
+        processedRaw = raw.substring(0, startIdx).trim()
     }
 
     val lines = processedRaw.lines()

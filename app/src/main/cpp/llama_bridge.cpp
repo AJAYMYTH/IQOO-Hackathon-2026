@@ -1,14 +1,19 @@
 #include <jni.h>
 #include <string>
+#include <vector>
+#include <mutex>
+#include <algorithm>
 #include <android/log.h>
 
 #define TAG "LlamaBridge"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 
 #if defined(HAVE_LLAMA_CPP) && HAVE_LLAMA_CPP
 #include "llama.h"
-#include "common.h"
+
+static std::mutex g_llama_mutex;
 
 extern "C" {
 
@@ -17,8 +22,11 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_loadModel(
         JNIEnv *env, jobject /* this */,
         jstring modelPath, jint nGpuLayers) {
 
+    std::lock_guard<std::mutex> lock(g_llama_mutex);
+    llama_backend_init();
+
     const char *path = env->GetStringUTFChars(modelPath, nullptr);
-    LOGI("Loading model from: %s", path);
+    LOGI("Loading GGUF model from: %s with %d GPU layers", path, nGpuLayers);
 
     llama_model_params model_params = llama_model_default_params();
     model_params.n_gpu_layers = nGpuLayers;
@@ -27,11 +35,11 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_loadModel(
     env->ReleaseStringUTFChars(modelPath, path);
 
     if (model == nullptr) {
-        LOGE("Failed to load model");
+        LOGE("Failed to load model from path: %s", path ? path : "null");
         return 0;
     }
 
-    LOGI("Model loaded successfully");
+    LOGI("Model loaded successfully into memory");
     return reinterpret_cast<jlong>(model);
 }
 
@@ -40,6 +48,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_createContext(
         JNIEnv *env, jobject /* this */,
         jlong modelHandle, jint contextSize) {
 
+    std::lock_guard<std::mutex> lock(g_llama_mutex);
     auto *model = reinterpret_cast<llama_model *>(modelHandle);
     if (model == nullptr) {
         LOGE("Model handle is null");
@@ -47,17 +56,20 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_createContext(
     }
 
     llama_context_params ctx_params = llama_context_default_params();
-    ctx_params.n_ctx = contextSize;
+    ctx_params.n_ctx = contextSize > 0 ? contextSize : 2048;
+    ctx_params.n_batch = 512;
+    ctx_params.n_ubatch = 512;
     ctx_params.n_threads = 4;
     ctx_params.n_threads_batch = 4;
+    ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_DISABLED;
 
     llama_context *ctx = llama_init_from_model(model, ctx_params);
     if (ctx == nullptr) {
-        LOGE("Failed to create context");
+        LOGE("Failed to create llama_context");
         return 0;
     }
 
-    LOGI("Context created with size %d", contextSize);
+    LOGI("Context created successfully with size %d", ctx_params.n_ctx);
     return reinterpret_cast<jlong>(ctx);
 }
 
@@ -66,87 +78,195 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
         JNIEnv *env, jobject /* this */,
         jlong contextHandle, jstring prompt, jint maxTokens) {
 
+    std::lock_guard<std::mutex> lock(g_llama_mutex);
     auto *ctx = reinterpret_cast<llama_context *>(contextHandle);
     if (ctx == nullptr) {
-        return env->NewStringUTF("Error: context is null");
+        return env->NewStringUTF("Error: context handle is null");
     }
 
     const llama_model *model = llama_get_model(ctx);
     const llama_vocab *vocab = llama_model_get_vocab(model);
 
     const char *prompt_str = env->GetStringUTFChars(prompt, nullptr);
-    std::string prompt_cpp(prompt_str);
-    env->ReleaseStringUTFChars(prompt, prompt_str);
+    std::string prompt_cpp(prompt_str ? prompt_str : "");
+    if (prompt_str) env->ReleaseStringUTFChars(prompt, prompt_str);
 
     // Tokenize
-    const int n_prompt_max = prompt_cpp.length() + 256;
-    std::vector<llama_token> tokens(n_prompt_max);
-    int n_tokens = llama_tokenize(vocab, prompt_cpp.c_str(), prompt_cpp.length(),
-                                   tokens.data(), n_prompt_max, true, true);
-    if (n_tokens < 0) {
+    const int n_prompt_tokens = -llama_tokenize(vocab, prompt_cpp.c_str(), (int32_t)prompt_cpp.size(), NULL, 0, true, true);
+    std::vector<llama_token> prompt_tokens(n_prompt_tokens > 0 ? n_prompt_tokens : 1);
+    if (llama_tokenize(vocab, prompt_cpp.c_str(), (int32_t)prompt_cpp.size(), prompt_tokens.data(), (int32_t)prompt_tokens.size(), true, true) < 0) {
         LOGE("Tokenization failed");
         return env->NewStringUTF("Error: tokenization failed");
     }
-    tokens.resize(n_tokens);
 
-    // Clear KV cache
-    llama_kv_cache_clear(ctx);
-
-    // Decode prompt
-    llama_batch batch = llama_batch_init(n_tokens, 0, 1);
-    for (int i = 0; i < n_tokens; i++) {
-        llama_batch_add(batch, tokens[i], i, {0}, false);
+    // Truncate prompt if longer than context size
+    int n_ctx = (int)llama_n_ctx(ctx);
+    if ((int)prompt_tokens.size() > n_ctx - 128) {
+        LOGI("Truncating prompt from %d to %d tokens to fit context", (int)prompt_tokens.size(), n_ctx - 128);
+        prompt_tokens.resize(n_ctx - 128);
     }
-    batch.logits[batch.n_tokens - 1] = true;
 
-    if (llama_decode(ctx, batch) != 0) {
-        LOGE("Decode failed");
-        llama_batch_free(batch);
-        return env->NewStringUTF("Error: decode failed");
+    // Clear KV cache before generation
+    llama_memory_clear(llama_get_memory(ctx), false);
+
+    // Chunked prompt evaluation to stay within n_batch (512)
+    for (size_t b = 0; b < prompt_tokens.size(); b += 512) {
+        int32_t n_eval = std::min((int32_t)(prompt_tokens.size() - b), 512);
+        llama_batch batch = llama_batch_get_one(prompt_tokens.data() + b, n_eval);
+        if (llama_decode(ctx, batch) != 0) {
+            LOGE("Prompt evaluation decode failed at chunk offset %zu", b);
+            return env->NewStringUTF("Error: decode failed during prompt evaluation");
+        }
     }
-    llama_batch_free(batch);
 
-    // Generate
-    std::string result;
-    int n_cur = n_tokens;
-
-    auto *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    // Init Sampler
+    llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    llama_sampler_chain_add(smpl, llama_sampler_init_min_p(0.05f, 1));
     llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.3f));
-    llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
 
-    for (int i = 0; i < maxTokens; i++) {
-        llama_token new_token = llama_sampler_sample(smpl, ctx, -1);
+    std::string result;
+    int max_gen = maxTokens > 0 ? maxTokens : 1024;
+    LOGI("Starting on-device generation with %d prompt tokens, max_gen: %d", (int)prompt_tokens.size(), max_gen);
 
-        if (llama_vocab_is_eog(vocab, new_token)) {
+    for (int i = 0; i < max_gen; i++) {
+        llama_token new_token_id = llama_sampler_sample(smpl, ctx, -1);
+        if (llama_vocab_is_eog(vocab, new_token_id)) {
+            LOGI("End of generation token reached at step %d", i);
             break;
         }
 
         char buf[256];
-        int n = llama_token_to_piece(vocab, new_token, buf, sizeof(buf), 0, true);
+        int n = llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
         if (n > 0) {
             result.append(buf, n);
         }
 
-        llama_batch next_batch = llama_batch_init(1, 0, 1);
-        llama_batch_add(next_batch, new_token, n_cur, {0}, true);
-        n_cur++;
-
-        if (llama_decode(ctx, next_batch) != 0) {
-            LOGE("Decode failed during generation");
-            llama_batch_free(next_batch);
+        llama_batch batch = llama_batch_get_one(&new_token_id, 1);
+        if (llama_decode(ctx, batch) != 0) {
+            LOGE("Decode failed at generation step %d", i);
             break;
         }
-        llama_batch_free(next_batch);
     }
 
     llama_sampler_free(smpl);
+    LOGI("Generation finished, generated %zu characters", result.size());
+    return env->NewStringUTF(result.c_str());
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
+        JNIEnv *env, jobject /* this */,
+        jlong contextHandle, jstring prompt, jint maxTokens, jobject callback) {
+
+    std::lock_guard<std::mutex> lock(g_llama_mutex);
+    auto *ctx = reinterpret_cast<llama_context *>(contextHandle);
+    if (ctx == nullptr) {
+        LOGE("generateStream: contextHandle is null");
+        return env->NewStringUTF("Error: context handle is null");
+    }
+
+    jclass callbackClass = nullptr;
+    jmethodID invokeMethod = nullptr;
+    if (callback != nullptr) {
+        callbackClass = env->GetObjectClass(callback);
+        if (callbackClass != nullptr) {
+            invokeMethod = env->GetMethodID(callbackClass, "invoke", "(Ljava/lang/Object;)Ljava/lang/Object;");
+        }
+    }
+
+    const llama_model *model = llama_get_model(ctx);
+    const llama_vocab *vocab = llama_model_get_vocab(model);
+
+    const char *prompt_str = env->GetStringUTFChars(prompt, nullptr);
+    std::string prompt_cpp(prompt_str ? prompt_str : "");
+    if (prompt_str) env->ReleaseStringUTFChars(prompt, prompt_str);
+
+    // Tokenize
+    const int n_prompt_tokens = -llama_tokenize(vocab, prompt_cpp.c_str(), (int32_t)prompt_cpp.size(), NULL, 0, true, true);
+    std::vector<llama_token> prompt_tokens(n_prompt_tokens > 0 ? n_prompt_tokens : 1);
+    if (llama_tokenize(vocab, prompt_cpp.c_str(), (int32_t)prompt_cpp.size(), prompt_tokens.data(), (int32_t)prompt_tokens.size(), true, true) < 0) {
+        LOGE("Tokenization failed");
+        return env->NewStringUTF("Error: tokenization failed");
+    }
+
+    // Truncate prompt if longer than context size
+    int n_ctx = (int)llama_n_ctx(ctx);
+    if ((int)prompt_tokens.size() > n_ctx - 128) {
+        LOGI("Truncating stream prompt from %d to %d tokens to fit context", (int)prompt_tokens.size(), n_ctx - 128);
+        prompt_tokens.resize(n_ctx - 128);
+    }
+
+    // Clear KV cache before generation
+    llama_memory_clear(llama_get_memory(ctx), false);
+
+    // Chunked prompt evaluation to stay within n_batch (512)
+    for (size_t b = 0; b < prompt_tokens.size(); b += 512) {
+        int32_t n_eval = std::min((int32_t)(prompt_tokens.size() - b), 512);
+        llama_batch batch = llama_batch_get_one(prompt_tokens.data() + b, n_eval);
+        if (llama_decode(ctx, batch) != 0) {
+            LOGE("Streaming prompt evaluation decode failed at chunk offset %zu", b);
+            return env->NewStringUTF("Error: decode failed during prompt evaluation");
+        }
+    }
+
+    // Init Sampler
+    llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    llama_sampler_chain_add(smpl, llama_sampler_init_min_p(0.05f, 1));
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.3f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
+
+    std::string result;
+    int max_gen = maxTokens > 0 ? maxTokens : 1024;
+    LOGI("Starting streaming generation with %d prompt tokens, max_gen: %d", (int)prompt_tokens.size(), max_gen);
+
+    for (int i = 0; i < max_gen; i++) {
+        llama_token new_token_id = llama_sampler_sample(smpl, ctx, -1);
+        if (llama_vocab_is_eog(vocab, new_token_id)) {
+            LOGI("Streaming end of generation token at step %d", i);
+            break;
+        }
+
+        char buf[256];
+        int n = llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
+        if (n > 0) {
+            std::string piece(buf, n);
+            result.append(piece);
+
+            if (invokeMethod != nullptr && callback != nullptr) {
+                jstring pieceStr = env->NewStringUTF(piece.c_str());
+                jobject retObj = env->CallObjectMethod(callback, invokeMethod, pieceStr);
+                env->DeleteLocalRef(pieceStr);
+                if (retObj != nullptr) {
+                    env->DeleteLocalRef(retObj);
+                }
+                if (env->ExceptionCheck()) {
+                    LOGE("Exception in Kotlin stream callback, aborting stream");
+                    env->ExceptionClear();
+                    break;
+                }
+            }
+        }
+
+        llama_batch batch = llama_batch_get_one(&new_token_id, 1);
+        if (llama_decode(ctx, batch) != 0) {
+            LOGE("Streaming decode failed at step %d", i);
+            break;
+        }
+    }
+
+    if (callbackClass != nullptr) {
+        env->DeleteLocalRef(callbackClass);
+    }
+    llama_sampler_free(smpl);
+    LOGI("Streaming finished, generated %zu characters", result.size());
     return env->NewStringUTF(result.c_str());
 }
 
 JNIEXPORT void JNICALL
 Java_com_apexos_repoguardian_data_llm_LlamaBridge_freeContext(
         JNIEnv *env, jobject /* this */, jlong contextHandle) {
+    std::lock_guard<std::mutex> lock(g_llama_mutex);
     auto *ctx = reinterpret_cast<llama_context *>(contextHandle);
     if (ctx != nullptr) {
         llama_free(ctx);
@@ -157,6 +277,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_freeContext(
 JNIEXPORT void JNICALL
 Java_com_apexos_repoguardian_data_llm_LlamaBridge_freeModel(
         JNIEnv *env, jobject /* this */, jlong modelHandle) {
+    std::lock_guard<std::mutex> lock(g_llama_mutex);
     auto *model = reinterpret_cast<llama_model *>(modelHandle);
     if (model != nullptr) {
         llama_model_free(model);
@@ -167,14 +288,18 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_freeModel(
 JNIEXPORT jstring JNICALL
 Java_com_apexos_repoguardian_data_llm_LlamaBridge_getModelInfo(
         JNIEnv *env, jobject /* this */, jlong modelHandle) {
+    std::lock_guard<std::mutex> lock(g_llama_mutex);
     auto *model = reinterpret_cast<llama_model *>(modelHandle);
     if (model == nullptr) {
         return env->NewStringUTF("No model loaded");
     }
 
+    char desc[128] = {0};
+    llama_model_desc(model, desc, sizeof(desc));
     char buf[256];
-    snprintf(buf, sizeof(buf), "Model loaded - params: %lld",
-             (long long)llama_model_n_params(model));
+    snprintf(buf, sizeof(buf), "%s (%.2fB params)",
+             desc,
+             (double)llama_model_n_params(model) / 1e9);
     return env->NewStringUTF(buf);
 }
 
@@ -182,7 +307,6 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_getModelInfo(
 
 #else
 
-// Fallback JNI implementation when llama.cpp is building or testing
 extern "C" {
 
 JNIEXPORT jlong JNICALL
@@ -192,7 +316,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_loadModel(
     const char *path = env->GetStringUTFChars(modelPath, nullptr);
     LOGI("Stub loadModel called for: %s (gpuLayers: %d)", path, nGpuLayers);
     env->ReleaseStringUTFChars(modelPath, path);
-    return 1; // Return non-zero stub handle
+    return 1;
 }
 
 JNIEXPORT jlong JNICALL
@@ -200,7 +324,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_createContext(
         JNIEnv *env, jobject /* this */,
         jlong modelHandle, jint contextSize) {
     LOGI("Stub createContext called with size %d", contextSize);
-    return 1; // Return non-zero stub handle
+    return 1;
 }
 
 JNIEXPORT jstring JNICALL
@@ -208,7 +332,26 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_generate(
         JNIEnv *env, jobject /* this */,
         jlong contextHandle, jstring prompt, jint maxTokens) {
     LOGI("Stub generate called");
-    return env->NewStringUTF("{\"has_issue\": true, \"summary\": \"[On-Device AI] Analysis completed successfully\", \"issues\": [{\"file\": \"app/build.gradle.kts\", \"line\": 1, \"severity\": \"info\", \"description\": \"Code reviewed locally on device\", \"fix\": \"Keep up the great work!\"}], \"fixed_code\": null}");
+    return env->NewStringUTF("{\"has_issue\": false, \"summary\": \"Analysis completed\", \"issues\": []}");
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_apexos_repoguardian_data_llm_LlamaBridge_generateStream(
+        JNIEnv *env, jobject /* this */,
+        jlong contextHandle, jstring prompt, jint maxTokens, jobject callback) {
+    LOGI("Stub generateStream called");
+    if (callback != nullptr) {
+        jclass callbackClass = env->GetObjectClass(callback);
+        if (callbackClass != nullptr) {
+            jmethodID invokeMethod = env->GetMethodID(callbackClass, "invoke", "(Ljava/lang/Object;)Ljava/lang/Object;");
+            if (invokeMethod != nullptr) {
+                jstring token = env->NewStringUTF("On-device AI response ready.");
+                env->CallObjectMethod(callback, invokeMethod, token);
+                env->DeleteLocalRef(token);
+            }
+        }
+    }
+    return env->NewStringUTF("On-device AI response ready.");
 }
 
 JNIEXPORT void JNICALL

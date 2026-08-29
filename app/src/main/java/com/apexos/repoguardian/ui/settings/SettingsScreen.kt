@@ -1,8 +1,12 @@
 package com.apexos.repoguardian.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,13 +20,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.apexos.repoguardian.core.logging.LogEntry
+import com.apexos.repoguardian.core.logging.LogLevel
 import com.apexos.repoguardian.data.llm.ModelState
 import com.apexos.repoguardian.navigation.Routes
 import com.apexos.repoguardian.ui.theme.*
+import kotlinx.coroutines.launch
 import java.io.File
 
 data class BackendOption(
@@ -93,7 +105,11 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val liveLogs by viewModel.liveLogs.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val clipboardManager = LocalClipboardManager.current
+    val coroutineScope = rememberCoroutineScope()
+
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
 
@@ -167,24 +183,43 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings & Profile") },
+                title = { Text("Settings & Diagnostics") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    TextButton(
-                        onClick = { viewModel.saveSettings() },
-                        enabled = !uiState.isSaving
-                    ) {
-                        if (uiState.isSaving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Text("Save", fontWeight = FontWeight.Bold)
+                    if (uiState.selectedSettingsTab == 0) {
+                        TextButton(
+                            onClick = { viewModel.saveSettings() },
+                            enabled = !uiState.isSaving
+                        ) {
+                            if (uiState.isSaving) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text("Save", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    } else {
+                        IconButton(
+                            onClick = {
+                                val allText = viewModel.getFullLogsText()
+                                clipboardManager.setText(AnnotatedString(allText))
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("Copied ${liveLogs.size} logs to clipboard!")
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy Full Logs")
+                        }
+                        IconButton(
+                            onClick = { viewModel.clearLogs() }
+                        ) {
+                            Icon(Icons.Default.DeleteSweep, contentDescription = "Clear Logs")
                         }
                     }
                 }
@@ -196,183 +231,550 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // === USER PROFILE SECTION ===
-            UserProfileCard(
-                username = uiState.user?.login ?: uiState.selectedRepoOwner.ifBlank { "GitHub User" },
-                displayName = uiState.user?.name,
-                activeRepo = if (uiState.selectedRepoName.isNotBlank()) "${uiState.selectedRepoOwner}/${uiState.selectedRepoName}" else null,
-                publicRepos = uiState.user?.publicRepos ?: 0,
-                onLogoutClick = { showLogoutDialog = true }
-            )
-
-            // === STORAGE & CACHE MANAGEMENT ===
-            StorageCacheCard(
-                cacheSize = uiState.appCacheSizeFormatted,
-                modelsSize = uiState.modelsSizeFormatted,
-                downloadedModels = uiState.downloadedModels,
-                onClearCacheClick = { showClearCacheDialog = true },
-                onDeleteModelClick = { viewModel.deleteDownloadedModel(it) },
-                onBrowseModelsClick = { navController.navigate(Routes.MODEL_BROWSER) }
-            )
-
-            HorizontalDivider()
-
-            // === Model State ===
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = when (uiState.modelState) {
-                        is ModelState.Loaded -> StatusPass.copy(alpha = 0.1f)
-                        is ModelState.Error -> StatusFail.copy(alpha = 0.1f)
-                        is ModelState.Loading -> StatusPending.copy(alpha = 0.1f)
-                        else -> MaterialTheme.colorScheme.surfaceVariant
-                    }
-                )
+            // === TAB SELECTOR ===
+            TabRow(
+                selectedTabIndex = uiState.selectedSettingsTab,
+                containerColor = MaterialTheme.colorScheme.surface
             ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = when (uiState.modelState) {
-                            is ModelState.Loaded -> Icons.Default.CheckCircle
-                            is ModelState.Error -> Icons.Default.Error
-                            is ModelState.Loading -> Icons.Default.HourglassTop
-                            else -> Icons.Default.Info
-                        },
-                        contentDescription = null,
-                        tint = when (uiState.modelState) {
-                            is ModelState.Loaded -> StatusPass
-                            is ModelState.Error -> StatusFail
-                            is ModelState.Loading -> StatusPending
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                Tab(
+                    selected = uiState.selectedSettingsTab == 0,
+                    onClick = { viewModel.setTab(0) },
+                    text = { Text("Settings & Models", fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = null) }
+                )
+                Tab(
+                    selected = uiState.selectedSettingsTab == 1,
+                    onClick = { viewModel.setTab(1) },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Logs (Dev Stage)", fontWeight = FontWeight.SemiBold)
+                            if (liveLogs.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Badge(containerColor = MaterialTheme.colorScheme.primary) {
+                                    Text("${liveLogs.size}")
+                                }
+                            }
                         }
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = when (val state = uiState.modelState) {
-                            is ModelState.Loaded -> state.modelInfo
-                            is ModelState.Error -> "Error: ${state.message}"
-                            is ModelState.Loading -> "Loading model..."
-                            else -> "No model loaded. Download or select a GGUF model"
-                        },
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-
-            // === Model Path ===
-            Text(
-                text = "Model Configuration",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            OutlinedTextField(
-                value = uiState.modelPath,
-                onValueChange = { viewModel.updateModelPath(it) },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Active GGUF Model Path") },
-                placeholder = { Text("/sdcard/models/qwen2.5-coder-3b-q4_k_m.gguf") },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            HorizontalDivider()
-
-            // === Backend Selector ===
-            Text(
-                text = "Inference Backend & Acceleration",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            Text(
-                text = "Choose how the AI model runs on your device. Each backend uses different hardware for inference.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
-
-            backendOptions.forEach { option ->
-                BackendCard(
-                    option = option,
-                    isSelected = uiState.selectedBackend == option.id,
-                    onSelect = { viewModel.updateBackend(option.id) }
+                    },
+                    icon = { Icon(Icons.Default.BugReport, contentDescription = null) }
                 )
             }
 
-            HorizontalDivider()
+            if (uiState.selectedSettingsTab == 0) {
+                // === SETTINGS TAB CONTENT ===
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    // === USER PROFILE SECTION ===
+                    UserProfileCard(
+                        username = uiState.user?.login ?: uiState.selectedRepoOwner.ifBlank { "GitHub User" },
+                        displayName = uiState.user?.name,
+                        activeRepo = if (uiState.selectedRepoName.isNotBlank()) "${uiState.selectedRepoOwner}/${uiState.selectedRepoName}" else null,
+                        publicRepos = uiState.user?.publicRepos ?: 0,
+                        onLogoutClick = { showLogoutDialog = true }
+                    )
 
-            // === Custom Rules ===
-            Text(
-                text = "Custom Review Rules",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+                    // === STORAGE & CACHE MANAGEMENT ===
+                    StorageCacheCard(
+                        cacheSize = uiState.appCacheSizeFormatted,
+                        modelsSize = uiState.modelsSizeFormatted,
+                        downloadedModels = uiState.downloadedModels,
+                        onClearCacheClick = { showClearCacheDialog = true },
+                        onDeleteModelClick = { viewModel.deleteDownloadedModel(it) },
+                        onBrowseModelsClick = { navController.navigate(Routes.MODEL_BROWSER) }
+                    )
 
-            Text(
-                text = "Add custom rules for the AI reviewer. These will be included in every code review prompt.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
+                    HorizontalDivider()
 
-            OutlinedTextField(
-                value = uiState.customRules,
-                onValueChange = { viewModel.updateCustomRules(it) },
+                    // === Model State ===
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = when (uiState.modelState) {
+                                is ModelState.Loaded -> StatusPass.copy(alpha = 0.1f)
+                                is ModelState.Error -> StatusFail.copy(alpha = 0.1f)
+                                is ModelState.Loading -> StatusPending.copy(alpha = 0.1f)
+                                else -> MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = when (uiState.modelState) {
+                                    is ModelState.Loaded -> Icons.Default.CheckCircle
+                                    is ModelState.Error -> Icons.Default.Error
+                                    is ModelState.Loading -> Icons.Default.HourglassTop
+                                    else -> Icons.Default.Info
+                                },
+                                contentDescription = null,
+                                tint = when (uiState.modelState) {
+                                    is ModelState.Loaded -> StatusPass
+                                    is ModelState.Error -> StatusFail
+                                    is ModelState.Loading -> StatusPending
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = when (val state = uiState.modelState) {
+                                    is ModelState.Loaded -> state.modelInfo
+                                    is ModelState.Error -> "Error: ${state.message}"
+                                    is ModelState.Loading -> "Loading model..."
+                                    else -> "No model loaded. Download or select a GGUF model"
+                                },
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+
+                    // === Model Configuration ===
+                    Text(
+                        text = "Model Configuration",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    OutlinedTextField(
+                        value = uiState.modelPath,
+                        onValueChange = { viewModel.updateModelPath(it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Active GGUF Model Path") },
+                        placeholder = { Text("/sdcard/models/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = uiState.localServerUrl,
+                        onValueChange = { viewModel.updateLocalServerUrl(it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Local Server URL (llama-server / Ollama / LM Studio)") },
+                        placeholder = { Text("e.g. http://10.0.2.2:1234 or http://192.168.1.100:11434") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    HorizontalDivider()
+
+                    // === Backend Selector ===
+                    Text(
+                        text = "Inference Backend & Acceleration",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = "Choose how the AI model runs on your device. Each backend uses different hardware for inference.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+
+                    backendOptions.forEach { option ->
+                        BackendCard(
+                            option = option,
+                            isSelected = uiState.selectedBackend == option.id,
+                            onSelect = { viewModel.updateBackend(option.id) }
+                        )
+                    }
+
+                    HorizontalDivider()
+
+                    // === Custom Rules ===
+                    Text(
+                        text = "Custom Review Rules",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = "Add custom rules for the AI reviewer. These will be included in every code review prompt.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+
+                    OutlinedTextField(
+                        value = uiState.customRules,
+                        onValueChange = { viewModel.updateCustomRules(it) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 120.dp),
+                        label = { Text("Review rules") },
+                        placeholder = {
+                            Text("e.g.:\n- Flag any hardcoded credentials\n- Prefer val over var in Kotlin\n- Check for memory leaks in Android lifecycle")
+                        },
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Button(
+                        onClick = { viewModel.saveSettings() },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        enabled = !uiState.isSaving
+                    ) {
+                        if (uiState.isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Saving...")
+                        } else {
+                            Icon(Icons.Default.Save, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Save Settings")
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    // === llama.cpp Architecture & Customizations ===
+                    Text(
+                        text = "On-Device Engine: llama.cpp",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    LlamaInfoCard()
+
+                    HorizontalDivider()
+
+                    // === Open Source Credits ===
+                    Text(
+                        text = "Open Source Software Credits",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    OpenSourceCreditsCard()
+                }
+            } else {
+                // === LOGS TAB CONTENT (DEV STAGE) ===
+                DevLogsConsole(
+                    logs = liveLogs,
+                    onCopyLogs = {
+                        val allText = viewModel.getFullLogsText()
+                        clipboardManager.setText(AnnotatedString(allText))
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Copied ${liveLogs.size} logs to clipboard!")
+                        }
+                    },
+                    onClearLogs = { viewModel.clearLogs() }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun DevLogsConsole(
+    logs: List<LogEntry>,
+    onCopyLogs: () -> Unit,
+    onClearLogs: () -> Unit
+) {
+    var selectedFilter by remember { mutableStateOf("ALL") }
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredLogs = remember(logs, selectedFilter, searchQuery) {
+        logs.filter { entry ->
+            val matchesFilter = when (selectedFilter) {
+                "ERROR" -> entry.level == LogLevel.ERROR
+                "WARN" -> entry.level == LogLevel.WARN || entry.level == LogLevel.ERROR
+                "GITHUB" -> entry.tag.contains("GitHub", ignoreCase = true)
+                "LLM" -> entry.tag.contains("Llama", ignoreCase = true) || entry.tag.contains("Prompt", ignoreCase = true) || entry.tag.contains("Chat", ignoreCase = true)
+                else -> true
+            }
+            val matchesSearch = searchQuery.isBlank() ||
+                    entry.message.contains(searchQuery, ignoreCase = true) ||
+                    entry.tag.contains(searchQuery, ignoreCase = true) ||
+                    (entry.details?.contains(searchQuery, ignoreCase = true) == true)
+
+            matchesFilter && matchesSearch
+        }
+    }
+
+    val errorCount = remember(logs) { logs.count { it.level == LogLevel.ERROR } }
+    val warnCount = remember(logs) { logs.count { it.level == LogLevel.WARN } }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Notice banner
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 120.dp),
-                label = { Text("Review rules") },
-                placeholder = {
-                    Text("e.g.:\n- Flag any hardcoded credentials\n- Prefer val over var in Kotlin\n- Check for memory leaks in Android lifecycle")
-                },
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Button(
-                onClick = { viewModel.saveSettings() },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                enabled = !uiState.isSaving
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                if (uiState.isSaving) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        Icons.Default.Terminal,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Saving...")
-                } else {
-                    Icon(Icons.Default.Save, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Save Settings")
+                    Text(
+                        text = "Dev Stage Source of Truth • ${logs.size} events ($errorCount errors, $warnCount warnings)",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FilledTonalButton(
+                        onClick = onCopyLogs,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Copy All", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = onClearLogs,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(14.dp))
+                    }
                 }
             }
+        }
 
-            HorizontalDivider()
+        // Search Bar
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Filter logs by tag, message, or error keyword...", style = MaterialTheme.typography.bodySmall) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Default.Close, contentDescription = "Clear search", modifier = Modifier.size(16.dp))
+                    }
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            singleLine = true,
+            shape = RoundedCornerShape(10.dp)
+        )
 
-            // === llama.cpp Architecture & Customizations ===
-            Text(
-                text = "On-Device Engine: llama.cpp",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+        // Filter chips
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            FilterChip(
+                selected = selectedFilter == "ALL",
+                onClick = { selectedFilter = "ALL" },
+                label = { Text("All (${logs.size})") }
             )
-            LlamaInfoCard()
-
-            HorizontalDivider()
-
-            // === Open Source Credits ===
-            Text(
-                text = "Open Source Software Credits",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+            FilterChip(
+                selected = selectedFilter == "ERROR",
+                onClick = { selectedFilter = "ERROR" },
+                label = { Text("Errors ($errorCount)") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer
+                )
             )
-            OpenSourceCreditsCard()
+            FilterChip(
+                selected = selectedFilter == "WARN",
+                onClick = { selectedFilter = "WARN" },
+                label = { Text("Warnings ($warnCount)") }
+            )
+            FilterChip(
+                selected = selectedFilter == "GITHUB",
+                onClick = { selectedFilter = "GITHUB" },
+                label = { Text("GitHub API") }
+            )
+            FilterChip(
+                selected = selectedFilter == "LLM",
+                onClick = { selectedFilter = "LLM" },
+                label = { Text("LLM & Inference") }
+            )
+        }
+
+        // Log Entries List in Terminal Window
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(10.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)),
+            color = Color(0xFF0F141C)
+        ) {
+            if (filteredLogs.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Code, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(36.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = if (logs.isEmpty()) "No events recorded yet.\nInteract with chat, GitHub, or models to record logs." else "No logs matching current filter.",
+                            color = Color.Gray,
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(filteredLogs, key = { it.id }) { entry ->
+                        LogEntryRow(entry = entry)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LogEntryRow(entry: LogEntry) {
+    var expanded by remember { mutableStateOf(false) }
+
+    val levelColor = when (entry.level) {
+        LogLevel.ERROR -> Color(0xFFFF5252)
+        LogLevel.WARN -> Color(0xFFFFB300)
+        LogLevel.INFO -> Color(0xFF4CAF50)
+        LogLevel.DEBUG -> Color(0xFF00E5FF)
+    }
+
+    val levelBg = levelColor.copy(alpha = 0.15f)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFF161D29))
+            .clickable(enabled = !entry.details.isNullOrBlank()) { expanded = !expanded }
+            .padding(8.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // Level chip
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = levelBg
+            ) {
+                Text(
+                    text = entry.level.name,
+                    color = levelColor,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            // Time
+            Text(
+                text = entry.formattedTime,
+                color = Color(0xFF8B949E),
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace
+            )
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            // Tag
+            Text(
+                text = "[${entry.tag}]",
+                color = Color(0xFF58A6FF),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Message
+        Text(
+            text = entry.message,
+            color = if (entry.level == LogLevel.ERROR) Color(0xFFFF8B8B) else Color(0xFFE6EDF3),
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace
+        )
+
+        // Expandable details / stacktrace
+        if (!entry.details.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 2.dp)
+            ) {
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = levelColor,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = if (expanded) "Hide Details / Stacktrace" else "Tap to View Stacktrace / Error Details",
+                    color = levelColor,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            if (expanded) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = Color(0xFF0D1117),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp)
+                ) {
+                    Text(
+                        text = entry.details,
+                        color = Color(0xFFFF7B72),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+            }
         }
     }
 }

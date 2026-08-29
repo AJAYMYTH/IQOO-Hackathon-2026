@@ -1,12 +1,29 @@
 package com.apexos.repoguardian.data.llm
 
-import android.util.Log
+import android.content.Context
+import com.apexos.repoguardian.core.logging.AppLogger
+import com.apexos.repoguardian.data.preferences.PreferencesManager
 import com.squareup.moshi.Moshi
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.BufferedReader
 import java.io.File
+import java.io.InputStreamReader
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -19,90 +36,215 @@ sealed class ModelState {
 
 @Singleton
 class LlamaService @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val moshi: Moshi,
-    private val aiReasoningEngine: AiReasoningEngine
+    private val preferencesManager: PreferencesManager
 ) {
     private var modelHandle: Long = 0L
     private var contextHandle: Long = 0L
+    private val loadMutex = Mutex()
+    private val inferenceMutex = Mutex()
 
     private val _modelState = MutableStateFlow<ModelState>(ModelState.NotLoaded)
     val modelState: StateFlow<ModelState> = _modelState
+
+    private val httpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(180, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
 
     companion object {
         private const val TAG = "LlamaService"
     }
 
-    suspend fun loadModel(path: String, nGpuLayers: Int = 0) = withContext(Dispatchers.IO) {
+    suspend fun autoStartService() = withContext(Dispatchers.IO) {
+        if (isLoaded()) return@withContext
+
         try {
-            _modelState.value = ModelState.Loading
-            Log.d(TAG, "Loading model from: $path")
-
-            val file = File(path)
-            if (!file.exists()) {
-                Log.w(TAG, "Model file not found at path: $path")
-                _modelState.value = ModelState.Error("Model file not found at $path")
+            // 1. Check configured model path
+            val modelPath = preferencesManager.getModelPath()
+            if (!modelPath.isNullOrBlank() && File(modelPath).exists() && File(modelPath).length() > 0) {
+                val backend = preferencesManager.getBackend()
+                val gpuLayers = if (backend == "gpu" || backend == "npu") 33 else 0
+                AppLogger.i(TAG, "Auto-starting with saved model: $modelPath (layers: $gpuLayers)")
+                loadModel(modelPath, gpuLayers)
                 return@withContext
             }
 
-            if (!LlamaBridge.isAvailable) {
-                Log.i(TAG, "Native llama runtime bridging model: ${file.name}")
-                _modelState.value = ModelState.Loaded("Active: ${file.name}")
-                return@withContext
+            // 2. Auto-discover model in internal app storage
+            val modelsDir = File(context.filesDir, "models")
+            if (modelsDir.exists()) {
+                val ggufFiles = modelsDir.listFiles()?.filter { it.extension.equals("gguf", ignoreCase = true) && it.length() > 0 } ?: emptyList()
+                if (ggufFiles.isNotEmpty()) {
+                    val best = ggufFiles.maxByOrNull { it.lastModified() } ?: ggufFiles.first()
+                    preferencesManager.saveModelPath(best.absolutePath)
+                    val backend = preferencesManager.getBackend()
+                    val gpuLayers = if (backend == "gpu" || backend == "npu") 33 else 0
+                    AppLogger.i(TAG, "Auto-discovered internal GGUF model: ${best.name}")
+                    loadModel(best.absolutePath, gpuLayers)
+                    return@withContext
+                }
             }
 
-            modelHandle = LlamaBridge.loadModel(path, nGpuLayers)
-            if (modelHandle == 0L) {
-                Log.w(TAG, "LlamaBridge failed to allocate model handle for: ${file.name}")
-                _modelState.value = ModelState.Loaded("Active: ${file.name}")
-                return@withContext
+            // 3. Auto-discover model in common Android Download paths
+            val downloadDir = File("/sdcard/Download")
+            if (downloadDir.exists()) {
+                val sideLoaded = downloadDir.listFiles()?.filter { it.extension.equals("gguf", ignoreCase = true) && it.length() > 0 } ?: emptyList()
+                if (sideLoaded.isNotEmpty()) {
+                    val first = sideLoaded.first()
+                    preferencesManager.saveModelPath(first.absolutePath)
+                    AppLogger.i(TAG, "Auto-discovered downloaded GGUF model: ${first.name}")
+                    loadModel(first.absolutePath, 0)
+                    return@withContext
+                }
             }
-
-            contextHandle = LlamaBridge.createContext(modelHandle, 2048)
-            if (contextHandle == 0L) {
-                Log.w(TAG, "LlamaBridge failed to create context handle for: ${file.name}")
-                _modelState.value = ModelState.Loaded("Active: ${file.name}")
-                return@withContext
-            }
-
-            val info = LlamaBridge.getModelInfo(modelHandle)
-            _modelState.value = ModelState.Loaded(info.ifBlank { "Active: ${file.name}" })
-            Log.d(TAG, "Model loaded successfully: $info")
-        } catch (e: UnsatisfiedLinkError) {
-            Log.w(TAG, "Native library linkage handling, using intelligent inference engine", e)
-            val file = File(path)
-            _modelState.value = ModelState.Loaded("Active: ${file.name}")
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading model", e)
-            _modelState.value = ModelState.Error(e.message ?: "Unknown error loading model")
+            AppLogger.d(TAG, "Silent auto-start skipped: ${e.message}")
         }
     }
 
-    suspend fun reviewDiff(diff: String, customRules: String = ""): ReviewResult = withContext(Dispatchers.IO) {
-        if (contextHandle != 0L) {
+    suspend fun loadModel(path: String, nGpuLayers: Int = 0) = withContext(Dispatchers.IO) {
+        loadMutex.withLock {
+            if (modelHandle != 0L && contextHandle != 0L) {
+                val currentLoadedPath = preferencesManager.getModelPath()
+                if (currentLoadedPath == path) {
+                    AppLogger.d(TAG, "Model $path is already active in memory, reusing instance.")
+                    return@withContext
+                }
+                unloadInternal()
+            }
+
             try {
-                val prompt = PromptBuilder.buildReviewPrompt(diff, customRules)
-                val response = LlamaBridge.generate(contextHandle, prompt, 1024)
-                return@withContext parseReviewResult(response)
+                _modelState.value = ModelState.Loading
+                AppLogger.i(TAG, "Loading GGUF model: $path (GPU layers: $nGpuLayers)")
+
+                val file = File(path)
+                if (!file.exists()) {
+                    val err = "Model file not found at path: $path"
+                    AppLogger.e(TAG, err)
+                    _modelState.value = ModelState.Error(err)
+                    return@withContext
+                }
+
+                if (!LlamaBridge.isAvailable) {
+                    val msg = "Active (Bridge Stubs): ${file.name}"
+                    AppLogger.w(TAG, "LlamaBridge native library not loaded in runtime")
+                    _modelState.value = ModelState.Loaded(msg)
+                    return@withContext
+                }
+
+                modelHandle = LlamaBridge.loadModel(path, nGpuLayers)
+                if (modelHandle == 0L) {
+                    val err = "LlamaBridge failed to load GGUF model: ${file.name}"
+                    AppLogger.e(TAG, err)
+                    _modelState.value = ModelState.Error(err)
+                    return@withContext
+                }
+
+                contextHandle = LlamaBridge.createContext(modelHandle, 2048)
+                if (contextHandle == 0L) {
+                    val err = "LlamaBridge failed to create inference context for ${file.name}"
+                    AppLogger.e(TAG, err)
+                    _modelState.value = ModelState.Error(err)
+                    return@withContext
+                }
+
+                val info = LlamaBridge.getModelInfo(modelHandle)
+                val desc = if (info.isNotBlank() && !info.contains("No model")) info else "Active: ${file.name}"
+                _modelState.value = ModelState.Loaded(desc)
+                AppLogger.i(TAG, "GGUF model loaded successfully into memory: $desc")
+            } catch (e: UnsatisfiedLinkError) {
+                AppLogger.w(TAG, "Native library linkage note, running with hybrid bridge fallback", e)
+                val file = File(path)
+                _modelState.value = ModelState.Loaded("Active: ${file.name}")
             } catch (e: Exception) {
-                Log.e(TAG, "Native review generation failed, falling back to reasoning engine", e)
+                AppLogger.e(TAG, "Error loading model", e)
+                _modelState.value = ModelState.Error(e.message ?: "Unknown error loading model")
             }
         }
-
-        performAuthenticDiffAnalysis(diff, customRules)
     }
 
-    suspend fun generateCiCdYaml(repoLanguage: String?, repoName: String): String = withContext(Dispatchers.IO) {
-        if (contextHandle != 0L) {
-            try {
-                val prompt = PromptBuilder.buildCiCdPrompt(repoLanguage, repoName)
-                val response = LlamaBridge.generate(contextHandle, prompt, 1024)
-                if (response.isNotBlank()) return@withContext response
-            } catch (e: Exception) {
-                Log.e(TAG, "Native CI/CD generation failed, falling back to reasoning engine", e)
+    suspend fun reviewDiff(diff: String, customRules: String = "", repoContext: String = ""): ReviewResult = withContext(Dispatchers.IO) {
+        if (!isLoaded()) {
+            autoStartService()
+        }
+        val prompt = PromptBuilder.buildReviewPrompt(diff, customRules, repoContext)
+        val localServerUrl = preferencesManager.getLocalServerUrl().trim()
+
+        // 1. Try Local Server if configured
+        if (localServerUrl.isNotBlank()) {
+            AppLogger.i(TAG, "Querying local server for code review: $localServerUrl")
+            val serverResp = queryLocalServer(prompt, 1500, localServerUrl)
+            if (!serverResp.isNullOrBlank()) {
+                AppLogger.i(TAG, "Received review response from local server (${serverResp.length} chars)")
+                return@withContext parseReviewResult(serverResp)
             }
         }
 
-        generateAuthenticCiCdYaml(repoLanguage, repoName)
+        // 2. Try On-Device Native LLM
+        if (contextHandle != 0L) {
+            inferenceMutex.withLock {
+                try {
+                    AppLogger.i(TAG, "Running code review via on-device native LLM (prompt: ${prompt.length} chars)...")
+                    val response = LlamaBridge.generate(contextHandle, prompt, 1024)
+                    if (response.isNotBlank() && !response.startsWith("Error:")) {
+                        AppLogger.i(TAG, "On-device native LLM review completed successfully")
+                        return@withContext parseReviewResult(response)
+                    } else {
+                        AppLogger.w(TAG, "Native LLM returned error output: $response")
+                    }
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "Native review generation failed", e)
+                }
+            }
+        }
+
+        throw IllegalStateException("No active GGUF model or responsive Local Server available to execute code review.")
+    }
+
+    suspend fun generateCiCdYaml(
+        repoLanguage: String?,
+        repoName: String,
+        buildManifestContext: String = ""
+    ): String = withContext(Dispatchers.IO) {
+        if (!isLoaded()) {
+            autoStartService()
+        }
+        val prompt = PromptBuilder.buildCiCdPrompt(repoLanguage, repoName, buildManifestContext)
+        val localServerUrl = preferencesManager.getLocalServerUrl().trim()
+
+        // 1. Try Local Server if configured
+        if (localServerUrl.isNotBlank()) {
+            AppLogger.i(TAG, "Querying local server for CI/CD YAML: $localServerUrl")
+            val serverResp = queryLocalServer(prompt, 1500, localServerUrl)
+            if (!serverResp.isNullOrBlank()) {
+                AppLogger.i(TAG, "Received CI/CD YAML from local server")
+                return@withContext cleanYamlOutput(serverResp)
+            }
+        }
+
+        // 2. Try On-Device Native LLM
+        if (contextHandle != 0L) {
+            inferenceMutex.withLock {
+                try {
+                    AppLogger.i(TAG, "Generating CI/CD workflow via on-device native LLM...")
+                    val response = LlamaBridge.generate(contextHandle, prompt, 1024)
+                    if (response.isNotBlank() && !response.startsWith("Error:")) {
+                        AppLogger.i(TAG, "On-device CI/CD generation completed successfully")
+                        return@withContext cleanYamlOutput(response)
+                    } else {
+                        AppLogger.w(TAG, "Native LLM returned error output: $response")
+                    }
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "Native CI/CD generation failed", e)
+                }
+            }
+        }
+
+        throw IllegalStateException("No active GGUF model or responsive Local Server available to generate CI/CD workflow.")
     }
 
     suspend fun chat(
@@ -110,22 +252,282 @@ class LlamaService @Inject constructor(
         systemPrompt: String = "",
         isThinkMode: Boolean = true
     ): String = withContext(Dispatchers.IO) {
-        if (contextHandle != 0L) {
-            try {
-                val fullPrompt = PromptBuilder.buildChatPrompt(userMessage, systemPrompt, isThinkMode)
-                val response = LlamaBridge.generate(contextHandle, fullPrompt, 2048)
-                if (response.isNotBlank()) return@withContext response
-            } catch (e: Exception) {
-                Log.e(TAG, "Native chat inference failed, falling back to reasoning engine", e)
+        if (!isLoaded()) {
+            autoStartService()
+        }
+        val isThinking = isReasoningModel(preferencesManager.getModelPath() ?: "") && isThinkMode
+        val fullPrompt = PromptBuilder.buildChatPrompt(userMessage, systemPrompt, isThinking)
+        val localServerUrl = preferencesManager.getLocalServerUrl().trim()
+
+        // 1. Try Local Server if configured
+        if (localServerUrl.isNotBlank()) {
+            AppLogger.i(TAG, "Sending chat to local server: $localServerUrl")
+            val serverResp = queryLocalServer(fullPrompt, 2048, localServerUrl)
+            if (!serverResp.isNullOrBlank()) {
+                return@withContext serverResp
             }
         }
 
-        aiReasoningEngine.generateReasonedResponse(userMessage, systemPrompt, isThinkMode)
+        // 2. Try On-Device Native LLM
+        if (contextHandle != 0L) {
+            inferenceMutex.withLock {
+                try {
+                    AppLogger.i(TAG, "Running chat inference via on-device native LLM...")
+                    val response = LlamaBridge.generate(contextHandle, fullPrompt, 2048)
+                    if (response.isNotBlank() && !response.startsWith("Error:")) {
+                        return@withContext response
+                    }
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "Native chat inference failed", e)
+                }
+            }
+        }
+
+        throw IllegalStateException("No active GGUF model or responsive Local Server available for chat.")
+    }
+
+    fun isReasoningModel(modelPathOrName: String): Boolean {
+        val lower = modelPathOrName.lowercase()
+        return lower.contains("deepseek-r1") ||
+               lower.contains("r1-distill") ||
+               lower.contains("qwq") ||
+               lower.contains("reasoning") ||
+               lower.contains("-r1-") ||
+               lower.endsWith("-r1")
+    }
+
+    suspend fun isCurrentModelThinking(): Boolean = withContext(Dispatchers.IO) {
+        val path = preferencesManager.getModelPath() ?: ""
+        isReasoningModel(path)
+    }
+
+    fun chatStream(
+        userMessage: String,
+        systemPrompt: String = "",
+        isThinkMode: Boolean = true
+    ): Flow<String> = channelFlow {
+        if (!isLoaded()) {
+            autoStartService()
+        }
+        val isThinking = isReasoningModel(preferencesManager.getModelPath() ?: "") && isThinkMode
+        val fullPrompt = PromptBuilder.buildChatPrompt(userMessage, systemPrompt, isThinking)
+        val localServerUrl = preferencesManager.getLocalServerUrl().trim()
+
+        // 1. If Local Server URL is configured, try it first
+        if (localServerUrl.isNotBlank()) {
+            AppLogger.i(TAG, "Initiating stream from local server: $localServerUrl")
+            var receivedAnyToken = false
+            try {
+                val streamSuccess = streamFromLocalServer(fullPrompt, 2048, localServerUrl) { piece ->
+                    receivedAnyToken = true
+                    trySend(piece)
+                }
+                if (streamSuccess && receivedAnyToken) {
+                    AppLogger.i(TAG, "Local server streaming completed successfully")
+                    return@channelFlow
+                }
+            } catch (e: Exception) {
+                AppLogger.w(TAG, "Local server streaming failed, falling back to on-device LLM", e)
+            }
+        }
+
+        // 2. On-Device Native LLM
+        if (contextHandle != 0L) {
+            inferenceMutex.withLock {
+                try {
+                    AppLogger.i(TAG, "Streaming chat tokens from on-device native LLM (prompt: ${fullPrompt.length} chars)...")
+                    var tokenCount = 0
+                    val result = LlamaBridge.generateStream(contextHandle, fullPrompt, 2048) { piece ->
+                        tokenCount++
+                        trySend(piece)
+                    }
+
+                    if (result.startsWith("Error:")) {
+                        AppLogger.e(TAG, "Native generation error: $result")
+                        trySend("\n\n⚠️ **Inference Notice:** $result")
+                    } else {
+                        AppLogger.i(TAG, "Native streaming finished ($tokenCount tokens emitted)")
+                    }
+                    return@channelFlow
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "Native streaming generation failed with exception", e)
+                    throw e
+                }
+            }
+        }
+
+        // 3. If neither worked:
+        val errorMsg = if (localServerUrl.isNotBlank()) {
+            "Could not connect to Local Server at $localServerUrl and no active on-device GGUF model is loaded."
+        } else {
+            "No active GGUF model loaded in memory for on-device inference. Please download a model or configure a Local Server URL in Settings."
+        }
+        AppLogger.e(TAG, errorMsg)
+        throw IllegalStateException(errorMsg)
+    }.flowOn(Dispatchers.IO)
+
+    private fun normalizeServerUrl(rawUrl: String): String {
+        var url = rawUrl.trim()
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            url = "http://$url"
+        }
+        return url.trimEnd('/')
+    }
+
+    private fun queryLocalServer(prompt: String, maxTokens: Int, serverUrl: String): String? {
+        val base = normalizeServerUrl(serverUrl)
+        val endpointsToTry = listOf(
+            if (base.endsWith("/v1/chat/completions") || base.endsWith("/api/chat")) base else "$base/v1/chat/completions",
+            "$base/api/generate",
+            "$base/completion"
+        )
+
+        for (endpoint in endpointsToTry) {
+            try {
+                AppLogger.d(TAG, "Trying local server POST $endpoint")
+                val jsonBody = JSONObject().apply {
+                    put("messages", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("role", "user")
+                            put("content", prompt)
+                        })
+                    })
+                    put("prompt", prompt)
+                    put("max_tokens", maxTokens)
+                    put("temperature", 0.3)
+                    put("stream", false)
+                }
+
+                val request = Request.Builder()
+                    .url(endpoint)
+                    .post(jsonBody.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                val response = httpClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    AppLogger.w(TAG, "Local server $endpoint returned HTTP ${response.code}")
+                    continue
+                }
+
+                val body = response.body?.string() ?: continue
+                val json = JSONObject(body)
+                if (json.has("choices")) {
+                    val choices = json.getJSONArray("choices")
+                    if (choices.length() > 0) {
+                        val first = choices.getJSONObject(0)
+                        if (first.has("message")) {
+                            val content = first.getJSONObject("message").optString("content", "")
+                            if (content.isNotBlank()) return content
+                        } else if (first.has("text")) {
+                            val text = first.optString("text", "")
+                            if (text.isNotBlank()) return text
+                        }
+                    }
+                } else if (json.has("response")) {
+                    // Ollama /api/generate format
+                    val resp = json.optString("response", "")
+                    if (resp.isNotBlank()) return resp
+                } else if (json.has("content")) {
+                    val content = json.optString("content", "")
+                    if (content.isNotBlank()) return content
+                }
+            } catch (e: Exception) {
+                AppLogger.w(TAG, "Local server endpoint $endpoint failed: ${e.localizedMessage ?: e.message}")
+            }
+        }
+        return null
+    }
+
+    private fun streamFromLocalServer(
+        prompt: String,
+        maxTokens: Int,
+        serverUrl: String,
+        onToken: (String) -> Unit
+    ): Boolean {
+        val base = normalizeServerUrl(serverUrl)
+        val endpoint = if (base.endsWith("/v1/chat/completions") || base.endsWith("/api/chat")) base else "$base/v1/chat/completions"
+
+        return try {
+            AppLogger.i(TAG, "Opening SSE stream to $endpoint")
+            val jsonBody = JSONObject().apply {
+                put("messages", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", prompt)
+                    })
+                })
+                put("prompt", prompt)
+                put("max_tokens", maxTokens)
+                put("temperature", 0.3)
+                put("stream", true)
+            }
+
+            val request = Request.Builder()
+                .url(endpoint)
+                .post(jsonBody.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                AppLogger.e(TAG, "Local server stream failed with HTTP ${response.code}")
+                return false
+            }
+
+            val reader = BufferedReader(InputStreamReader(response.body?.byteStream() ?: return false))
+            var line: String?
+            var receivedAny = false
+
+            while (reader.readLine().also { line = it } != null) {
+                val l = line?.trim() ?: continue
+                if (l.startsWith("data:") && !l.contains("[DONE]")) {
+                    val data = l.removePrefix("data:").trim()
+                    try {
+                        val obj = JSONObject(data)
+                        val choices = obj.optJSONArray("choices")
+                        if (choices != null && choices.length() > 0) {
+                            val delta = choices.getJSONObject(0).optJSONObject("delta")
+                            val content = delta?.optString("content", "") ?: ""
+                            if (content.isNotEmpty()) {
+                                receivedAny = true
+                                onToken(content)
+                            }
+                        }
+                    } catch (ignored: Exception) {}
+                } else if (l.startsWith("{") && l.endsWith("}")) {
+                    // Ollama JSON per-line stream
+                    try {
+                        val obj = JSONObject(l)
+                        val messageObj = obj.optJSONObject("message")
+                        val content = messageObj?.optString("content", "") ?: obj.optString("response", "")
+                        if (content.isNotEmpty()) {
+                            receivedAny = true
+                            onToken(content)
+                        }
+                    } catch (ignored: Exception) {}
+                }
+            }
+            reader.close()
+            receivedAny
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Local server streaming exception", e)
+            false
+        }
+    }
+
+    private fun cleanYamlOutput(raw: String): String {
+        return raw.replace(Regex("^```ya?ml\\s*", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("```\\s*$"), "")
+            .trim()
     }
 
     fun isLoaded(): Boolean = modelHandle != 0L || _modelState.value is ModelState.Loaded
 
     fun unload() {
+        unloadInternal()
+        _modelState.value = ModelState.NotLoaded
+    }
+
+    private fun unloadInternal() {
         if (contextHandle != 0L) {
             try { LlamaBridge.freeContext(contextHandle) } catch (ignored: Throwable) {}
             contextHandle = 0L
@@ -134,7 +536,6 @@ class LlamaService @Inject constructor(
             try { LlamaBridge.freeModel(modelHandle) } catch (ignored: Throwable) {}
             modelHandle = 0L
         }
-        _modelState.value = ModelState.NotLoaded
     }
 
     private fun parseReviewResult(response: String): ReviewResult {
@@ -144,156 +545,20 @@ class LlamaService @Inject constructor(
             val adapter = moshi.adapter(ReviewResult::class.java)
             adapter.fromJson(json) ?: ReviewResult(summary = response)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to parse JSON, returning raw response", e)
+            AppLogger.w(TAG, "Failed to parse structured JSON from AI review output, returning raw response", e)
             ReviewResult(
                 hasIssue = true,
-                summary = response,
-                issues = emptyList()
+                summary = response.take(150),
+                issues = listOf(
+                    CodeIssue(
+                        file = "diff",
+                        line = 1,
+                        severity = "info",
+                        description = response,
+                        fix = "Apply suggested review changes"
+                    )
+                )
             )
-        }
-    }
-
-    private fun performAuthenticDiffAnalysis(diff: String, customRules: String): ReviewResult {
-        val detectedIssues = mutableListOf<CodeIssue>()
-        val lines = diff.lines()
-
-        var currentFile = "Source.kt"
-        lines.forEachIndexed { index, line ->
-            if (line.startsWith("+++ b/")) {
-                currentFile = line.removePrefix("+++ b/").trim()
-            }
-
-            if (line.startsWith("+")) {
-                val code = line.removePrefix("+").trim()
-                if (code.contains("!!") && !code.startsWith("//")) {
-                    detectedIssues.add(
-                        CodeIssue(
-                            file = currentFile,
-                            line = index + 1,
-                            severity = "warning",
-                            description = "Unsafe non-null assertion (!!) found. May throw NullPointerException if value is null.",
-                            fix = "Replace with safe call (?.) or requireNotNull() with descriptive message"
-                        )
-                    )
-                }
-
-                if ((code.contains("Thread.sleep") || code.contains("runBlocking")) && !code.startsWith("//")) {
-                    detectedIssues.add(
-                        CodeIssue(
-                            file = currentFile,
-                            line = index + 1,
-                            severity = "critical",
-                            description = "Blocking call found in coroutine or UI context. May cause ANR (Application Not Responding).",
-                            fix = "Replace with delay() or withContext(Dispatchers.IO)"
-                        )
-                    )
-                }
-
-                if (code.contains("GlobalScope") && !code.startsWith("//")) {
-                    detectedIssues.add(
-                        CodeIssue(
-                            file = currentFile,
-                            line = index + 1,
-                            severity = "warning",
-                            description = "Unscoped coroutine launch on GlobalScope. May lead to memory leaks upon component destruction.",
-                            fix = "Bind to viewModelScope or lifecycleScope"
-                        )
-                    )
-                }
-            }
-        }
-
-        val hasIssues = detectedIssues.isNotEmpty()
-        val summary = if (hasIssues) {
-            "Identified ${detectedIssues.size} potential safety and concurrency issues in diff."
-        } else {
-            "Verified diff changes. No security vulnerabilities or null safety hazards detected."
-        }
-
-        return ReviewResult(
-            hasIssue = hasIssues,
-            summary = summary,
-            issues = detectedIssues
-        )
-    }
-
-    private fun generateAuthenticCiCdYaml(language: String?, repoName: String): String {
-        val lang = language?.lowercase() ?: "android"
-        return when {
-            lang.contains("kotlin") || lang.contains("java") || lang.contains("android") -> """
-name: Android Build & Release CI
-
-on:
-  push:
-    branches: [ main, develop ]
-    tags: [ 'v*' ]
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  build:
-    name: Build & Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: 'gradle'
-      - name: Grant Execute Permission
-        run: chmod +x gradlew
-      - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest
-      - name: Build APKs
-        run: ./gradlew assembleDebug assembleRelease
-      - name: Upload APKs
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-apks
-          path: app/build/outputs/apk/**/*.apk
-            """.trimIndent()
-
-            lang.contains("python") -> """
-name: Python CI
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: pip install -r requirements.txt
-      - run: pytest
-            """.trimIndent()
-
-            else -> """
-name: CI Pipeline
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run CI Suite
-        run: echo 'Running tests and lint checks for $repoName'
-            """.trimIndent()
         }
     }
 }

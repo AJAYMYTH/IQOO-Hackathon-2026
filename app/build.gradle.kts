@@ -13,6 +13,9 @@ val localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
+val sdkDirProp = localProperties.getProperty("sdk.dir") ?: System.getenv("ANDROID_SDK_ROOT") ?: System.getenv("ANDROID_HOME")
+val ndkFolder = if (sdkDirProp != null) file("$sdkDirProp/ndk/27.2.12479018") else null
+val hasValidNdk = ndkFolder != null && ndkFolder.exists() && file("$ndkFolder/source.properties").exists()
 
 android {
     namespace = "com.apexos.repoguardian"
@@ -30,6 +33,27 @@ android {
             ?: System.getenv("GITHUB_CLIENT_ID")
             ?: "Ov23liZPOsPuWwr6VQTG"
         buildConfigField("String", "GITHUB_CLIENT_ID", "\"$githubClientId\"")
+        
+        if (hasValidNdk) {
+            ndk {
+                abiFilters.addAll(listOf("arm64-v8a", "x86_64"))
+            }
+            externalNativeBuild {
+                cmake {
+                    arguments.addAll(listOf(
+                        "-DANDROID_STL=c++_shared",
+                        "-DGGML_OPENMP=OFF",
+                        "-DLLAMA_BUILD_COMMON=ON",
+                        "-DLLAMA_BUILD_TESTS=OFF",
+                        "-DLLAMA_BUILD_EXAMPLES=OFF",
+                        "-DLLAMA_BUILD_SERVER=OFF",
+                        "-DLLAMA_BUILD_TOOLS=OFF",
+                        "-DBUILD_SHARED_LIBS=OFF"
+                    ))
+                    cppFlags.addAll(listOf("-std=c++17", "-O3"))
+                }
+            }
+        }
     }
 
     buildTypes {
@@ -55,17 +79,23 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
     buildFeatures {
         compose = true
         buildConfig = true
     }
-    // externalNativeBuild {
-    //     cmake {
-    //         path = file("src/main/cpp/CMakeLists.txt")
-    //         version = "3.22.1"
-    //     }
-    // }
-    // ndkVersion = "27.2.12479018"
+
+    if (hasValidNdk) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+                version = "3.22.1"
+            }
+        }
+        ndkVersion = "27.2.12479018"
+    }
 }
 
 dependencies {
@@ -103,7 +133,12 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
 
+    // Testing
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
+
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
+

@@ -21,11 +21,15 @@ import java.io.File
 import java.text.DecimalFormat
 import javax.inject.Inject
 
+import com.apexos.repoguardian.core.logging.AppLogger
+import com.apexos.repoguardian.core.logging.LogEntry
+
 data class SettingsUiState(
     val user: GitHubUser? = null,
     val selectedRepoOwner: String = "",
     val selectedRepoName: String = "",
     val modelPath: String = "",
+    val localServerUrl: String = "",
     val selectedBackend: String = "cpu",
     val customRules: String = "",
     val downloadedModels: List<File> = emptyList(),
@@ -33,7 +37,8 @@ data class SettingsUiState(
     val appCacheSizeFormatted: String = "0 KB",
     val modelsSizeFormatted: String = "0 MB",
     val isSaving: Boolean = false,
-    val savedMessage: String? = null
+    val savedMessage: String? = null,
+    val selectedSettingsTab: Int = 0
 )
 
 @HiltViewModel
@@ -45,8 +50,10 @@ class SettingsViewModel @Inject constructor(
     private val modelDownloadManager: ModelDownloadManager
 ) : ViewModel() {
 
+    val liveLogs: StateFlow<List<LogEntry>> = AppLogger.logs
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState
+
 
     init {
         loadSettings()
@@ -56,6 +63,7 @@ class SettingsViewModel @Inject constructor(
     private fun loadSettings() {
         viewModelScope.launch {
             val modelPath = preferencesManager.getModelPath() ?: ""
+            val localServerUrl = preferencesManager.getLocalServerUrl()
             val backend = preferencesManager.getBackend()
             val rules = preferencesManager.getCustomRules()
             val repo = preferencesManager.getSelectedRepo()
@@ -64,6 +72,7 @@ class SettingsViewModel @Inject constructor(
 
             _uiState.value = _uiState.value.copy(
                 modelPath = modelPath,
+                localServerUrl = localServerUrl,
                 selectedBackend = backend,
                 customRules = rules,
                 selectedRepoOwner = repo?.first ?: "",
@@ -121,6 +130,10 @@ class SettingsViewModel @Inject constructor(
 
     fun updateModelPath(path: String) {
         _uiState.value = _uiState.value.copy(modelPath = path)
+    }
+
+    fun updateLocalServerUrl(url: String) {
+        _uiState.value = _uiState.value.copy(localServerUrl = url)
     }
 
     fun updateBackend(backend: String) {
@@ -183,6 +196,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSaving = true)
             preferencesManager.saveModelPath(_uiState.value.modelPath)
+            preferencesManager.saveLocalServerUrl(_uiState.value.localServerUrl)
             preferencesManager.saveBackend(_uiState.value.selectedBackend)
             preferencesManager.saveCustomRules(_uiState.value.customRules)
 
@@ -203,7 +217,21 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setTab(index: Int) {
+        _uiState.value = _uiState.value.copy(selectedSettingsTab = index)
+    }
+
+    fun clearLogs() {
+        AppLogger.clear()
+        _uiState.value = _uiState.value.copy(savedMessage = "Dev logs cleared")
+    }
+
+    fun getFullLogsText(): String {
+        return AppLogger.getFormattedLogsText()
+    }
+
     fun clearSavedMessage() {
         _uiState.value = _uiState.value.copy(savedMessage = null)
     }
 }
+

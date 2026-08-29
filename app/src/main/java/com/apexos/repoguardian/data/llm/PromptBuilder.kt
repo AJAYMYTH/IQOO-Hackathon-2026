@@ -2,15 +2,18 @@ package com.apexos.repoguardian.data.llm
 
 object PromptBuilder {
     /**
-     * Build prompt for code review. Keeps it short — diff only, not full files.
-     * This is critical for on-device inference speed.
+     * Build prompt for code review using real repository diff and context.
      */
-    fun buildReviewPrompt(diff: String, customRules: String = ""): String {
-        val truncatedDiff = if (diff.length > 3000) {
-            diff.take(3000) + "\n... (diff truncated for speed)"
+    fun buildReviewPrompt(diff: String, customRules: String = "", repoContext: String = ""): String {
+        val truncatedDiff = if (diff.length > 4000) {
+            diff.take(4000) + "\n... (diff truncated for token window)"
         } else {
             diff
         }
+
+        val contextSection = if (repoContext.isNotBlank()) {
+            "\nRepository Context:\n$repoContext\n"
+        } else ""
 
         val rulesSection = if (customRules.isNotBlank()) {
             "\nAdditional review rules:\n$customRules\n"
@@ -18,12 +21,12 @@ object PromptBuilder {
 
         return """
             <|im_start|>system
-            You are a code reviewer. Analyze the git diff and respond ONLY with valid JSON.
+            You are a code reviewer. Analyze the real git diff and source code from the repository. Respond ONLY with valid JSON.
             JSON format: {"has_issue": bool, "summary": "brief summary", "issues": [{"file": "filename", "line": number_or_null, "severity": "critical|warning|info", "description": "what's wrong", "fix": "how to fix"}], "fixed_code": "corrected code or null"}
-            Be concise. Focus on bugs, security issues, and bad practices.$rulesSection
+            Be concise. Focus on bugs, security issues, null safety, and bad practices.$contextSection$rulesSection
             <|im_end|>
             <|im_start|>user
-            Review this diff:
+            Review this repository diff:
             ```
             $truncatedDiff
             ```
@@ -33,35 +36,42 @@ object PromptBuilder {
     }
 
     /**
-     * Build prompt for CI/CD YAML generation.
+     * Build prompt for CI/CD YAML generation using real build manifests and repo structure.
      */
-    fun buildCiCdPrompt(language: String?, repoName: String): String {
+    fun buildCiCdPrompt(language: String?, repoName: String, buildManifestContext: String = ""): String {
+        val buildSection = if (buildManifestContext.isNotBlank()) {
+            "\nActual repository build configuration and structure:\n$buildManifestContext\n"
+        } else ""
+
         return """
             <|im_start|>system
-            You are a DevOps engineer. Generate a GitHub Actions workflow YAML file.
+            You are a DevOps engineer. Generate a production-ready GitHub Actions workflow YAML file based on the real repository data and build configuration.
             Output ONLY the YAML content, no markdown fences, no explanations.
-            The workflow should build and test the project on push/PR to main.
+            The workflow should build and test the project on push/PR to the repository default branch.$buildSection
             <|im_end|>
             <|im_start|>user
-            Generate a CI/CD workflow for a ${language ?: "unknown language"} project named "$repoName".
+            Generate a CI/CD workflow for the ${language ?: "software"} repository "$repoName".
             <|im_end|>
             <|im_start|>assistant
         """.trimIndent()
     }
 
     /**
-     * Build prompt for conversational AI Assistant with optional Deep Thinking.
+     * Build prompt for conversational AI Assistant with real GitHub repository context.
      */
-    fun buildChatPrompt(userMessage: String, systemContext: String, isThinkMode: Boolean): String {
-        val thinkingInstruction = if (isThinkMode) {
-            "\nYou must think step-by-step before answering. Write your thorough analysis and reasoning inside <think>...</think> tags, and then provide your final clear, verified solution."
+    fun buildChatPrompt(userMessage: String, systemContext: String, isThinkingModel: Boolean): String {
+        val thinkingInstruction = if (isThinkingModel) {
+            "\nYou are a reasoning AI model. Analyze the retrieved real GitHub repository data carefully. Write your internal analysis inside <think>...</think> tags, and then provide your clear, verified answer."
         } else {
-            "\nProvide a direct, concise, and production-ready solution."
+            ""
         }
 
         return """
             <|im_start|>system
-            You are Repo Guardian, an advanced on-device AI code reviewer and software engineer.
+            You are Repo Guardian, an advanced on-device AI code assistant and software engineer.
+            You have direct access to real repository data, source files, commits, and tree structure retrieved via the GitHub REST API.
+            Use this real repository data as the absolute ground truth to answer the user's questions and perform tasks.
+
             $systemContext$thinkingInstruction
             <|im_end|>
             <|im_start|>user
@@ -71,3 +81,4 @@ object PromptBuilder {
         """.trimIndent()
     }
 }
+

@@ -3,6 +3,7 @@ package com.apexos.repoguardian.ui.review
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.apexos.repoguardian.core.logging.AppLogger
 import com.apexos.repoguardian.data.github.ApiResult
 import com.apexos.repoguardian.data.github.GitHubRepository
 import com.apexos.repoguardian.data.github.models.CommitDiffResponse
@@ -37,6 +38,10 @@ class ReviewViewModel @Inject constructor(
     private val preferencesManager: PreferencesManager
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "ReviewViewModel"
+    }
+
     private val owner: String = savedStateHandle["owner"] ?: ""
     private val repo: String = savedStateHandle["repo"] ?: ""
     private val sha: String = savedStateHandle["sha"] ?: ""
@@ -56,16 +61,19 @@ class ReviewViewModel @Inject constructor(
         viewModelScope.launch {
             // 1. Load diff
             _uiState.value = _uiState.value.copy(isLoadingDiff = true, error = null)
+            AppLogger.i(TAG, "Loading commit diff from GitHub REST API for sha=$sha ($owner/$repo)")
             when (val result = gitHubRepository.getCommitDiff(owner, repo, sha)) {
                 is ApiResult.Success -> {
                     _uiState.value = _uiState.value.copy(
                         commitDiff = result.data,
                         isLoadingDiff = false
                     )
+                    AppLogger.i(TAG, "Commit diff loaded (${result.data.files?.size ?: 0} files), starting AI analysis")
                     // 2. Run LLM analysis
                     analyzeWithLlm(result.data)
                 }
                 is ApiResult.Error -> {
+                    AppLogger.e(TAG, "Failed to load diff from GitHub: ${result.message}")
                     _uiState.value = _uiState.value.copy(
                         isLoadingDiff = false,
                         error = "Failed to load diff: ${result.message}"
@@ -79,25 +87,31 @@ class ReviewViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isAnalyzing = true)
             try {
-                val diffText = diff.files?.joinToString("\n") { file ->
-                    "--- ${file.filename}\n${file.patch ?: "(binary file)"}"
+                val diffText = diff.files?.joinToString("\n\n") { file ->
+                    "--- a/${file.filename}\n+++ b/${file.filename}\n${file.patch ?: "(file changes without text patch)"}"
                 } ?: "No files changed"
 
                 val customRules = preferencesManager.getCustomRules()
-                val result = llamaService.reviewDiff(diffText, customRules)
+                val repoContext = "Repository: $owner/$repo | Target Commit SHA: $sha | Author: ${diff.commit.author?.name ?: "Unknown"}"
+                AppLogger.i(TAG, "Running AI review on commit diff (${diffText.length} chars)")
+                val result = llamaService.reviewDiff(diffText, customRules, repoContext)
 
                 _uiState.value = _uiState.value.copy(
                     reviewResult = result,
                     isAnalyzing = false
                 )
+                AppLogger.i(TAG, "AI Code Review finished: ${result.summary.take(80)}")
             } catch (e: Exception) {
+                AppLogger.e(TAG, "AI Code Review analysis failed", e)
                 _uiState.value = _uiState.value.copy(
                     isAnalyzing = false,
-                    error = "Analysis failed: ${e.message}"
+                    error = "Analysis failed: ${e.localizedMessage ?: e.message}"
                 )
             }
         }
     }
+
+
 
     fun openPullRequest() {
         viewModelScope.launch {

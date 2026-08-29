@@ -20,6 +20,14 @@ object LlamaBridge {
     // maxTokens: max tokens to generate
     external fun generate(contextHandle: Long, prompt: String, maxTokens: Int = 1024): String
 
+    // Generate completion with real-time streaming callback per token piece
+    external fun generateStream(
+        contextHandle: Long,
+        prompt: String,
+        maxTokens: Int = 1024,
+        onToken: (String) -> Unit
+    ): String
+
     // Free resources
     external fun freeContext(contextHandle: Long)
     external fun freeModel(modelHandle: Long)

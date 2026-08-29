@@ -32,9 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.apexos.repoguardian.navigation.Routes
-import com.apexos.repoguardian.ui.components.AiThinkingIndicator
 import com.apexos.repoguardian.ui.components.MarkdownContent
 import com.apexos.repoguardian.ui.theme.StatusPass
+import com.apexos.repoguardian.ui.theme.StatusPending
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -133,40 +133,36 @@ fun ChatScreen(
                             }
                         }
 
-                        // 2. Model Selector Dropdown
+                        // Model Selector Button
                         Box {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { viewModel.setModelDropdownOpen(true) }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                            FilterChip(
+                                selected = false,
+                                onClick = { viewModel.setModelDropdownOpen(true) },
+                                leadingIcon = {
                                     Icon(
                                         Icons.Default.Memory,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                        contentDescription = "Model",
+                                        modifier = Modifier.size(16.dp),
+                                        tint = if (uiState.activeModelName != "No Model Loaded") StatusPass else StatusPending
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                },
+                                label = {
                                     Text(
-                                        text = uiState.activeModelName.take(12),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        text = uiState.activeModelName,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.labelMedium
                                     )
+                                },
+                                trailingIcon = {
                                     Icon(
                                         Icons.Default.ArrowDropDown,
                                         contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                        modifier = Modifier.size(16.dp)
                                     )
-                                }
-                            }
+                                },
+                                shape = RoundedCornerShape(8.dp)
+                            )
 
                             DropdownMenu(
                                 expanded = uiState.isModelDropdownOpen,
@@ -266,35 +262,35 @@ fun ChatScreen(
             ) {
                 HorizontalDivider()
 
-                // Think Mode Toggle & Quick Prompt Chips
+                // Think Mode Toggle (Enabled for Reasoning Models like DeepSeek-R1) & Quick Prompts
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Think Mode Toggle Button
-                    FilterChip(
-                        selected = uiState.isThinkModeEnabled,
-                        onClick = { viewModel.toggleThinkMode() },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Psychology,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        label = {
-                            Text(
-                                text = if (uiState.isThinkModeEnabled) "Think ON" else "Think OFF",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        },
-                        shape = RoundedCornerShape(8.dp)
-                    )
-
-                    Spacer(modifier = Modifier.width(8.dp))
+                    if (uiState.isThinkingModel) {
+                        FilterChip(
+                            selected = uiState.isThinkModeEnabled,
+                            onClick = { viewModel.toggleThinkMode() },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Psychology,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            label = {
+                                Text(
+                                    text = if (uiState.isThinkModeEnabled) "Deep Think ON" else "Deep Think OFF",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
 
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -372,9 +368,57 @@ fun ChatScreen(
             contentPadding = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            if (uiState.showDownloadBanner) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.CloudDownload,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "No Model Downloaded",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = "Download a GGUF model to start chatting.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = { navController.navigate(Routes.MODEL_BROWSER) },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Download")
+                            }
+                        }
+                    }
+                }
+            }
+
             items(uiState.messages) { message ->
                 MessageBubble(
                     message = message,
+                    isGenerating = uiState.isGenerating,
+                    isThinkingModel = uiState.isThinkingModel,
+                    onNavigateToModels = { navController.navigate(Routes.MODEL_BROWSER) },
                     onCopyCode = { code ->
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                         val clip = ClipData.newPlainText("Code", code)
@@ -382,12 +426,6 @@ fun ChatScreen(
                         Toast.makeText(context, "Code copied to clipboard", Toast.LENGTH_SHORT).show()
                     }
                 )
-            }
-
-            if (uiState.isGenerating) {
-                item {
-                    AiThinkingIndicator()
-                }
             }
         }
     }
@@ -402,8 +440,60 @@ fun ChatScreen(
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
+    isGenerating: Boolean,
+    isThinkingModel: Boolean,
+    onNavigateToModels: () -> Unit,
     onCopyCode: (String) -> Unit
 ) {
+    if (message.isSystem) {
+        // System Notice Card (Distinct from AI / User responses)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = "System Notice",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "System Notice",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    text = message.content,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (message.content.contains("AI Models") || message.content.contains("Download")) {
+                    OutlinedButton(
+                        onClick = onNavigateToModels,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Open AI Models Manager")
+                    }
+                }
+            }
+        }
+        return
+    }
+
     val isUser = message.isUser
 
     Row(
@@ -448,11 +538,30 @@ private fun MessageBubble(
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 } else {
-                    MarkdownContent(
-                        content = message.content,
-                        textColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        onCopyCode = onCopyCode
-                    )
+                    if (message.content.isEmpty() && isGenerating) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            val statusText = if (isThinkingModel) "Thinking..." else "Working..."
+                            Text(
+                                text = statusText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    } else {
+                        MarkdownContent(
+                            content = message.content,
+                            textColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            onCopyCode = onCopyCode
+                        )
+                    }
                 }
             }
         }

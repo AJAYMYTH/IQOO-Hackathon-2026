@@ -3,9 +3,9 @@ package com.apexos.repoguardian.ui.cicd
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.apexos.repoguardian.core.logging.AppLogger
 import com.apexos.repoguardian.data.github.ApiResult
 import com.apexos.repoguardian.data.github.GitHubRepository
-import com.apexos.repoguardian.data.github.models.Repo
 import com.apexos.repoguardian.data.llm.LlamaService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +31,10 @@ class CiCdGeneratorViewModel @Inject constructor(
     private val gitHubRepository: GitHubRepository
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "CiCdGenerator"
+    }
+
     private val owner: String = savedStateHandle["owner"] ?: ""
     private val repo: String = savedStateHandle["repo"] ?: ""
 
@@ -47,32 +51,72 @@ class CiCdGeneratorViewModel @Inject constructor(
     private fun detectAndGenerate() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isGenerating = true, error = null)
+            AppLogger.i(TAG, "Starting CI/CD detection and generation for $owner/$repo")
             try {
-                // Get repo info to detect language
-                val reposResult = gitHubRepository.listRepos()
-                val language = when (reposResult) {
-                    is ApiResult.Success -> {
-                        reposResult.data.find { it.name == repo && it.owner.login == owner }?.language
-                    }
-                    else -> null
+                // 1. Get real repo info from GitHub REST API
+                val repoResult = gitHubRepository.getRepo(owner, repo)
+                val language = (repoResult as? ApiResult.Success)?.data?.language
+
+                // 2. Discover real build files from repository
+                val rootContentsResult = gitHubRepository.getRootContents(owner, repo)
+                val rootItems = (rootContentsResult as? ApiResult.Success)?.data ?: emptyList()
+                val rootNames = rootItems.map { it.name }
+
+                val candidateBuildFiles = listOf(
+                    "build.gradle.kts",
+                    "build.gradle",
+                    "package.json",
+                    "pom.xml",
+                    "Cargo.toml",
+                    "requirements.txt",
+                    "pyproject.toml",
+                    "CMakeLists.txt",
+                    "Makefile"
+                )
+
+                val matchedBuildFile = candidateBuildFiles.firstOrNull { file ->
+                    rootNames.any { it.equals(file, ignoreCase = true) }
                 }
 
-                _uiState.value = _uiState.value.copy(detectedLanguage = language ?: "Unknown")
+                val buildFileContent = if (matchedBuildFile != null) {
+                    when (val fileTextRes = gitHubRepository.getFileText(owner, repo, matchedBuildFile)) {
+                        is ApiResult.Success -> "File: $matchedBuildFile\n```\n${fileTextRes.data.take(2000)}\n```"
+                        else -> "Build file $matchedBuildFile detected in root."
+                    }
+                } else {
+                    "Root items: ${rootNames.take(15).joinToString(", ")}"
+                }
 
-                // Generate YAML with LLM
-                val yaml = llamaService.generateCiCdYaml(language, repo)
+                val detectedLang = language ?: when {
+                    rootNames.any { it.contains("gradle") } -> "Kotlin / Android"
+                    rootNames.any { it.contains("package.json") } -> "JavaScript / TypeScript"
+                    rootNames.any { it.contains("pom.xml") } -> "Java"
+                    rootNames.any { it.contains("requirements.txt") || it.contains("pyproject.toml") } -> "Python"
+                    rootNames.any { it.contains("Cargo.toml") } -> "Rust"
+                    else -> "Unknown"
+                }
+
+                _uiState.value = _uiState.value.copy(detectedLanguage = detectedLang)
+                AppLogger.i(TAG, "Detected stack for CI/CD: $detectedLang (manifest: $matchedBuildFile)")
+
+                // 3. Generate YAML using real build context
+                val yaml = llamaService.generateCiCdYaml(detectedLang, repo, buildFileContent)
                 _uiState.value = _uiState.value.copy(
                     generatedYaml = yaml,
                     isGenerating = false
                 )
+                AppLogger.i(TAG, "CI/CD YAML generated successfully (${yaml.length} chars)")
             } catch (e: Exception) {
+                AppLogger.e(TAG, "CI/CD generation failed", e)
                 _uiState.value = _uiState.value.copy(
                     isGenerating = false,
-                    error = "Generation failed: ${e.message}"
+                    error = "Generation failed: ${e.localizedMessage ?: e.message}"
                 )
             }
         }
     }
+
+
 
     fun updateYaml(yaml: String) {
         _uiState.value = _uiState.value.copy(generatedYaml = yaml)

@@ -25,6 +25,7 @@ class PreferencesManager @Inject constructor(
         private val KEY_BACKEND = stringPreferencesKey("backend") // cpu, gpu, npu
         private val KEY_CUSTOM_RULES = stringPreferencesKey("custom_rules")
         private val KEY_GUIDE_DISMISSED = booleanPreferencesKey("guide_dismissed")
+        private val KEY_LOCAL_SERVER_URL = stringPreferencesKey("local_server_url")
     }
 
     // === GitHub Token ===
@@ -102,6 +103,19 @@ class PreferencesManager @Inject constructor(
 
     fun observeBackend(): Flow<String> {
         return context.dataStore.data.map { it[KEY_BACKEND] ?: "cpu" }
+    }
+
+    // === Local Server URL (llama-server / OpenAI endpoint) ===
+    suspend fun saveLocalServerUrl(url: String) {
+        context.dataStore.edit { it[KEY_LOCAL_SERVER_URL] = url }
+    }
+
+    suspend fun getLocalServerUrl(): String {
+        return context.dataStore.data.first()[KEY_LOCAL_SERVER_URL] ?: ""
+    }
+
+    fun observeLocalServerUrl(): Flow<String> {
+        return context.dataStore.data.map { it[KEY_LOCAL_SERVER_URL] ?: "" }
     }
 
     // === Custom Rules ===

@@ -230,9 +230,47 @@ data class FileCommit(
 
 @JsonClass(generateAdapter = true)
 data class FileContentResponse(
-    val name: String,
-    val path: String,
-    val sha: String,
+    val name: String = "",
+    val path: String = "",
+    val sha: String = "",
     val content: String? = null, // Base64-encoded
-    val encoding: String? = null
+    val encoding: String? = null,
+    val size: Long? = 0L,
+    val type: String? = null
 )
+
+// === Git Tree Models ===
+
+@JsonClass(generateAdapter = true)
+data class GitTreeResponse(
+    val sha: String = "",
+    val tree: List<GitTreeItem> = emptyList(),
+    val truncated: Boolean = false
+)
+
+@JsonClass(generateAdapter = true)
+data class GitTreeItem(
+    val path: String = "",
+    val mode: String? = null,
+    val type: String = "blob", // "blob" (file) or "tree" (dir)
+    val sha: String? = null,
+    val size: Long? = null,
+    val url: String? = null
+)
+
+// === Issue Models ===
+
+@JsonClass(generateAdapter = true)
+data class GitHubIssue(
+    val id: Long = 0L,
+    val number: Int = 0,
+    val title: String = "",
+    val state: String = "open",
+    val body: String? = null,
+    @Json(name = "html_url") val htmlUrl: String? = null,
+    val user: RepoOwner? = null,
+    @Json(name = "comments") val commentsCount: Int = 0,
+    @Json(name = "created_at") val createdAt: String? = null,
+    @Json(name = "updated_at") val updatedAt: String? = null
+)
+

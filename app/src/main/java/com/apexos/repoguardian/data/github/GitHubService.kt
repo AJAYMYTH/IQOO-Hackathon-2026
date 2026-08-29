@@ -79,6 +79,38 @@ interface GitHubDataApi {
         @Path("repo") repo: String
     ): List<DirectoryItem>
 
+    @GET("repos/{owner}/{repo}/git/trees/{tree_sha}")
+    suspend fun getGitTree(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("tree_sha") treeSha: String,
+        @Query("recursive") recursive: Int = 1
+    ): GitTreeResponse
+
+    @GET("repos/{owner}/{repo}/pulls")
+    suspend fun listPulls(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("state") state: String = "open",
+        @Query("per_page") perPage: Int = 10
+    ): List<PullRequest>
+
+    @GET("repos/{owner}/{repo}/issues")
+    suspend fun listIssues(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("state") state: String = "open",
+        @Query("per_page") perPage: Int = 10
+    ): List<GitHubIssue>
+
+    @GET("repos/{owner}/{repo}/contents/{path}")
+    suspend fun getDirectoryContents(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("path", encoded = true) path: String,
+        @Query("ref") ref: String? = null
+    ): List<DirectoryItem>
+
     @GET("repos/{owner}/{repo}/contents/{path}")
     suspend fun getFileContent(
         @Path("owner") owner: String,
@@ -95,3 +127,4 @@ interface GitHubDataApi {
         @Body body: UpdateFileRequest
     ): FileCommitResponse
 }
+

@@ -3,10 +3,12 @@
 /local.properties
 /.idea/
 .DS_Store
-/build
+build/
+**/build/
 /captures
 .externalNativeBuild
-.cxx
+.cxx/
+**/.cxx/
 *.apk
 *.aab
 *.ap_
@@ -17,3 +19,7 @@ gen/
 out/
 *.log
 *.gguf
+phone_screen.png
+llama.cpp/
+
+
