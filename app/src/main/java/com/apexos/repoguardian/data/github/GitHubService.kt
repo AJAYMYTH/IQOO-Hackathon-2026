@@ -16,6 +16,9 @@ interface GitHubAuthApi {
 
 // Data API (base URL: https://api.github.com/)
 interface GitHubDataApi {
+    @GET("user")
+    suspend fun getUser(): GitHubUser
+
     @GET("user/repos")
     suspend fun listRepos(
         @Query("per_page") perPage: Int = 30,

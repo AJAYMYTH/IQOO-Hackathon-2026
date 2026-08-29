@@ -14,6 +14,10 @@ sealed class ApiResult<out T> {
 class GitHubRepository @Inject constructor(
     private val dataApi: GitHubDataApi
 ) {
+    suspend fun getUser(): ApiResult<GitHubUser> = apiCall {
+        dataApi.getUser()
+    }
+
     suspend fun listRepos(): ApiResult<List<Repo>> = apiCall {
         dataApi.listRepos()
     }

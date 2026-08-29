@@ -35,6 +35,17 @@ data class AccessTokenResponse(
     @Json(name = "error_description") val errorDescription: String? = null
 )
 
+// === User Models ===
+
+@JsonClass(generateAdapter = true)
+data class GitHubUser(
+    val login: String,
+    val name: String? = null,
+    @Json(name = "avatar_url") val avatarUrl: String? = null,
+    val bio: String? = null,
+    @Json(name = "public_repos") val publicRepos: Int = 0
+)
+
 // === Repo Models ===
 
 @JsonClass(generateAdapter = true)

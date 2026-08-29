@@ -73,16 +73,110 @@ fun DashboardScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = uiState.repoName.ifBlank { "Dashboard" },
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        if (uiState.repoOwner.isNotBlank()) {
+                    Box {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clickable { viewModel.setDropdownOpen(true) }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = uiState.repoName.ifBlank { "Dashboard" },
+                                        style = MaterialTheme.typography.titleLarge,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Switch Repository",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                if (uiState.repoOwner.isNotBlank()) {
+                                    Text(
+                                        text = uiState.repoOwner,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Repository switcher dropdown
+                        DropdownMenu(
+                            expanded = uiState.isDropdownOpen,
+                            onDismissRequest = { viewModel.setDropdownOpen(false) }
+                        ) {
                             Text(
-                                text = uiState.repoOwner,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                text = "Switch Repository",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                            HorizontalDivider()
+
+                            if (uiState.availableRepos.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("No repositories loaded") },
+                                    onClick = { viewModel.loadAvailableRepos() }
+                                )
+                            } else {
+                                uiState.availableRepos.take(8).forEach { repo ->
+                                    val isSelected = repo.name == uiState.repoName && repo.owner.login == uiState.repoOwner
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f, fill = false)) {
+                                                    Text(
+                                                        text = repo.name,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Text(
+                                                        text = repo.owner.login,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                                    )
+                                                }
+                                                if (isSelected) {
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Icon(
+                                                        Icons.Default.Check,
+                                                        contentDescription = "Selected",
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            viewModel.switchRepo(repo)
+                                        }
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Browse All Repositories...")
+                                    }
+                                },
+                                onClick = {
+                                    viewModel.setDropdownOpen(false)
+                                    navController.navigate(Routes.REPO_PICKER)
+                                }
                             )
                         }
                     }

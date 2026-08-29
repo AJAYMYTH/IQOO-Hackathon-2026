@@ -1,17 +1,21 @@
 package com.apexos.repoguardian.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -90,6 +94,8 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showLogoutDialog by remember { mutableStateOf(false) }
+    var showClearCacheDialog by remember { mutableStateOf(false) }
 
     // Show save message
     LaunchedEffect(uiState.savedMessage) {
@@ -99,10 +105,69 @@ fun SettingsScreen(
         }
     }
 
+    // Logout confirmation dialog
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            icon = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Log Out from GitHub?") },
+            text = {
+                Text("This will clear your stored GitHub access token and reset the active repository session. You will be redirected to the sign-in screen.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutDialog = false
+                        viewModel.logout {
+                            navController.navigate(Routes.AUTH) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Log Out")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Clear cache confirmation dialog
+    if (showClearCacheDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearCacheDialog = false },
+            icon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Clear Application Cache?") },
+            text = {
+                Text("This will delete temporary HTTP responses, diff caches, and speech audio buffers to free up device storage (${uiState.appCacheSizeFormatted}).")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearCacheDialog = false
+                        viewModel.clearAppCache()
+                    }
+                ) {
+                    Text("Clear Cache")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearCacheDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text("Settings & Profile") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -135,6 +200,27 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            // === USER PROFILE SECTION ===
+            UserProfileCard(
+                username = uiState.user?.login ?: uiState.selectedRepoOwner.ifBlank { "GitHub User" },
+                displayName = uiState.user?.name,
+                activeRepo = if (uiState.selectedRepoName.isNotBlank()) "${uiState.selectedRepoOwner}/${uiState.selectedRepoName}" else null,
+                publicRepos = uiState.user?.publicRepos ?: 0,
+                onLogoutClick = { showLogoutDialog = true }
+            )
+
+            // === STORAGE & CACHE MANAGEMENT ===
+            StorageCacheCard(
+                cacheSize = uiState.appCacheSizeFormatted,
+                modelsSize = uiState.modelsSizeFormatted,
+                downloadedModels = uiState.downloadedModels,
+                onClearCacheClick = { showClearCacheDialog = true },
+                onDeleteModelClick = { viewModel.deleteDownloadedModel(it) },
+                onBrowseModelsClick = { navController.navigate(Routes.MODEL_BROWSER) }
+            )
+
+            HorizontalDivider()
+
             // === Model State ===
             Card(
                 shape = RoundedCornerShape(12.dp),
@@ -172,7 +258,7 @@ fun SettingsScreen(
                             is ModelState.Loaded -> "Model: ${state.info}"
                             is ModelState.Error -> "Error: ${state.message}"
                             is ModelState.Loading -> "Loading model..."
-                            else -> "No model loaded"
+                            else -> "No model loaded (Mock Mode active)"
                         },
                         style = MaterialTheme.typography.bodyMedium
                     )
@@ -190,81 +276,17 @@ fun SettingsScreen(
                 value = uiState.modelPath,
                 onValueChange = { viewModel.updateModelPath(it) },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Model file path (.gguf)") },
+                label = { Text("Active GGUF Model Path") },
                 placeholder = { Text("/sdcard/models/qwen2.5-coder-3b-q4_k_m.gguf") },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp)
             )
 
-            // Downloaded models
-            if (uiState.downloadedModels.isNotEmpty()) {
-                Text(
-                    text = "Downloaded Models",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                uiState.downloadedModels.forEach { file ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { viewModel.selectDownloadedModel(file) },
-                        shape = RoundedCornerShape(8.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (uiState.modelPath == file.absolutePath)
-                                MaterialTheme.colorScheme.primaryContainer
-                            else MaterialTheme.colorScheme.surfaceVariant
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.Description,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = file.name,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Text(
-                                    text = "${file.length() / (1024 * 1024)} MB",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                )
-                            }
-                            if (uiState.modelPath == file.absolutePath) {
-                                Icon(
-                                    Icons.Default.CheckCircle,
-                                    contentDescription = "Selected",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Browse HuggingFace button
-            OutlinedButton(
-                onClick = { navController.navigate(Routes.MODEL_BROWSER) },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.CloudDownload, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Browse & Download from HuggingFace")
-            }
-
             HorizontalDivider()
 
             // === Backend Selector ===
             Text(
-                text = "Inference Backend",
+                text = "Inference Backend & Acceleration",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
@@ -311,6 +333,27 @@ fun SettingsScreen(
                 shape = RoundedCornerShape(12.dp)
             )
 
+            Button(
+                onClick = { viewModel.saveSettings() },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                enabled = !uiState.isSaving
+            ) {
+                if (uiState.isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Saving...")
+                } else {
+                    Icon(Icons.Default.Save, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Save Settings")
+                }
+            }
+
             HorizontalDivider()
 
             // === llama.cpp Architecture & Customizations ===
@@ -319,27 +362,290 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
-
             LlamaInfoCard()
 
             HorizontalDivider()
 
-            // === Open Source Software Usage ===
+            // === Open Source Credits ===
             Text(
-                text = "Open Source Software Acknowledgments",
+                text = "Open Source Software Credits",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
-
-            Text(
-                text = "Repo Guardian is built on top of industry-leading open source libraries and models:",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-            )
-
             OpenSourceCreditsCard()
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(32.dp))
+@Composable
+fun UserProfileCard(
+    username: String,
+    displayName: String?,
+    activeRepo: String?,
+    publicRepos: Int,
+    onLogoutClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Avatar badge
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = username.take(2).uppercase(),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = displayName ?: username,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "@$username",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+
+                // Auth status chip
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = StatusPass.copy(alpha = 0.15f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = StatusPass,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Connected",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = StatusPass,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            if (activeRepo != null) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Folder,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Active Repository:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                    }
+                    Text(
+                        text = activeRepo,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            OutlinedButton(
+                onClick = onLogoutClick,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Log Out from GitHub")
+            }
+        }
+    }
+}
+
+@Composable
+fun StorageCacheCard(
+    cacheSize: String,
+    modelsSize: String,
+    downloadedModels: List<File>,
+    onClearCacheClick: () -> Unit,
+    onDeleteModelClick: (File) -> Unit,
+    onBrowseModelsClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    Icons.Default.Storage,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Storage & Cache Management",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Stats row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("App Cache", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(cacheSize, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("GGUF Models", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(modelsSize, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            // Downloaded models list
+            if (downloadedModels.isNotEmpty()) {
+                Text(
+                    text = "Downloaded Models (${downloadedModels.size}):",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                downloadedModels.forEach { file ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = file.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "${file.length() / (1024 * 1024)} MB",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
+                            IconButton(
+                                onClick = { onDeleteModelClick(file) },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Delete model",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Action Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onClearCacheClick,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Clear Cache")
+                }
+
+                Button(
+                    onClick = onBrowseModelsClick,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Browse Models")
+                }
+            }
         }
     }
 }
@@ -353,95 +659,100 @@ fun BackendCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onSelect),
+            .clickable { onSelect() },
         shape = RoundedCornerShape(12.dp),
-        border = if (isSelected) CardDefaults.outlinedCardBorder() else null,
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected)
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                MaterialTheme.colorScheme.primaryContainer
             else MaterialTheme.colorScheme.surfaceVariant
-        )
+        ),
+        border = if (isSelected)
+            CardDefaults.outlinedCardBorder().copy(
+                brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary)
+            )
+        else null
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(
-                    selected = isSelected,
-                    onClick = onSelect
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     text = option.name,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = if (isSelected)
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                RadioButton(
+                    selected = isSelected,
+                    onClick = { onSelect() }
                 )
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
                 text = option.description,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                color = if (isSelected)
+                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )
-
-            Spacer(modifier = Modifier.height(12.dp))
 
             // Pros
             Text(
-                text = "✅ Advantages",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
+                text = "Advantages:",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
                 color = StatusPass
             )
             option.pros.forEach { pro ->
                 Text(
-                    text = "  • $pro",
+                    text = "  + $pro",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    color = if (isSelected)
+                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
 
             // Cons
             Text(
-                text = "⚠️ Considerations",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = SeverityWarning
+                text = "Trade-offs:",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = StatusFail
             )
             option.cons.forEach { con ->
                 Text(
-                    text = "  • $con",
+                    text = "  - $con",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    color = if (isSelected)
+                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
 
             // Recommendation
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = StatusInfo.copy(alpha = 0.1f)
+                color = if (isSelected)
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                else MaterialTheme.colorScheme.surface.copy(alpha = 0.3f)
             ) {
-                Row(
+                Text(
+                    text = "Recommendation: ${option.recommended}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(8.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Icon(
-                        Icons.Default.Lightbulb,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = StatusInfo
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = option.recommended,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = StatusInfo
-                    )
-                }
+                    color = if (isSelected)
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -456,128 +767,39 @@ fun LlamaInfoCard() {
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.Memory,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Why llama.cpp for Repo Guardian?",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Text(
-                text = "1. Pure C/C++ Performance with Zero Cloud Overhead",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
+                text = "1. Why llama.cpp for On-Device Inference?",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
-                text = "llama.cpp operates directly on hardware with no heavy runtime dependencies, providing sub-2.5s first-token latency on modern ARM processors.",
+                text = "llama.cpp is a pure C/C++ inference engine with zero heavy runtime dependencies. It supports ARM NEON SIMD, FP16/INT4 quantization (Q4_K_M, Q8_0), and enables 100% offline, privacy-first AI code reviews directly on mobile hardware without sending code to remote servers.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
             Text(
-                text = "2. 100% Offline Code Privacy",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
+                text = "2. Snapdragon Hardware Acceleration",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
-                text = "Your private source code, API keys, and commit diffs never leave the phone. All tokenization, inference, and analysis happen on-device.",
+                text = "On the iQOO 15 (Snapdragon 8 Elite / Gen series), llama.cpp utilizes OpenCL GPU compute and Hexagon NPU matrix multiplication (HTP) for accelerated token generation and ultra-low latency.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
             Text(
-                text = "3. SOTA Quantization (GGUF Q4_K_M)",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
+                text = "3. Hugging Face GGUF Integration",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = "Shrinks 3B coding models down to ~1.8GB RAM footprint with negligible precision loss, making high-quality code review possible within mobile RAM limits.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.Build,
-                    contentDescription = null,
-                    tint = StatusInfo,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "What We Built on Top of llama.cpp",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                text = "• Custom JNI Bridge (llama_bridge.cpp & LlamaBridge.kt)",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = "Direct C++ binding managing model lifecycle, sampling parameters (temp: 0.3, top-p: 0.9), and non-blocking asynchronous generation via Kotlin Coroutines.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Text(
-                text = "• ChatML Prompt & JSON Parser Engine",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = "Transforms raw git diffs and custom developer rules into structured JSON outputs (has_issue, severity, line, fix) ready for GitHub automated PR creation.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Text(
-                text = "• Dynamic Hardware Acceleration Manager",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = "Seamlessly routes inference between CPU, Adreno GPU (OpenCL), and Hexagon NPU (HTP) with instant fallback.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Text(
-                text = "• Integrated Hugging Face GGUF Downloader",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold
             )
             Text(
                 text = "Allows one-tap discovery, size-filtered downloading, and instant switching of mobile-optimized code models.",
@@ -629,4 +851,3 @@ fun OpenSourceCreditsCard() {
         }
     }
 }
-

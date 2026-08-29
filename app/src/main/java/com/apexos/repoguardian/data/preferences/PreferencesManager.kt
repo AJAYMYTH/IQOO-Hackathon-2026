@@ -53,6 +53,17 @@ class PreferencesManager @Inject constructor(
         }
     }
 
+    suspend fun clearSelectedRepo() {
+        context.dataStore.edit {
+            it.remove(KEY_SELECTED_REPO_OWNER)
+            it.remove(KEY_SELECTED_REPO_NAME)
+        }
+    }
+
+    suspend fun clearAll() {
+        context.dataStore.edit { it.clear() }
+    }
+
     suspend fun getSelectedRepo(): Pair<String, String>? {
         val prefs = context.dataStore.data.first()
         val owner = prefs[KEY_SELECTED_REPO_OWNER] ?: return null

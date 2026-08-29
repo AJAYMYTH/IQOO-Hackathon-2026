@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.apexos.repoguardian.data.github.ApiResult
 import com.apexos.repoguardian.data.github.GitHubRepository
 import com.apexos.repoguardian.data.github.models.Commit
+import com.apexos.repoguardian.data.github.models.Repo
 import com.apexos.repoguardian.data.preferences.PreferencesManager
 import com.apexos.repoguardian.data.voice.VoiceService
 import com.apexos.repoguardian.data.voice.VoiceState
@@ -17,8 +18,10 @@ import javax.inject.Inject
 data class DashboardUiState(
     val repoOwner: String = "",
     val repoName: String = "",
+    val availableRepos: List<Repo> = emptyList(),
     val commits: List<Commit> = emptyList(),
     val isLoading: Boolean = false,
+    val isDropdownOpen: Boolean = false,
     val error: String? = null
 )
 
@@ -36,6 +39,18 @@ class DashboardViewModel @Inject constructor(
 
     init {
         loadDashboard()
+        loadAvailableRepos()
+    }
+
+    fun loadAvailableRepos() {
+        viewModelScope.launch {
+            when (val result = gitHubRepository.listRepos()) {
+                is ApiResult.Success -> {
+                    _uiState.value = _uiState.value.copy(availableRepos = result.data)
+                }
+                else -> {}
+            }
+        }
     }
 
     fun loadDashboard() {
@@ -54,6 +69,39 @@ class DashboardViewModel @Inject constructor(
             )
 
             when (val result = gitHubRepository.listCommits(repo.first, repo.second)) {
+                is ApiResult.Success -> {
+                    _uiState.value = _uiState.value.copy(
+                        commits = result.data,
+                        isLoading = false
+                    )
+                }
+                is ApiResult.Error -> {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = result.message
+                    )
+                }
+            }
+        }
+    }
+
+    fun setDropdownOpen(open: Boolean) {
+        _uiState.value = _uiState.value.copy(isDropdownOpen = open)
+    }
+
+    fun switchRepo(repo: Repo) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                repoOwner = repo.owner.login,
+                repoName = repo.name,
+                isDropdownOpen = false,
+                isLoading = true,
+                commits = emptyList(),
+                error = null
+            )
+            preferencesManager.saveSelectedRepo(repo.owner.login, repo.name)
+
+            when (val result = gitHubRepository.listCommits(repo.owner.login, repo.name)) {
                 is ApiResult.Success -> {
                     _uiState.value = _uiState.value.copy(
                         commits = result.data,
