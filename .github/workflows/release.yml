@@ -3,7 +3,7 @@ name: Build & Release APK
 on:
   push:
     tags:
-      - 'v*'
+      - '*'
   workflow_dispatch:
     inputs:
       tag_name:
@@ -73,29 +73,36 @@ jobs:
 
           echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
 
-      - name: Generate Release Notes
+      - name: Generate Release Notes Body
         id: release_notes
         run: |
-          cat << 'EOF' > release_body.md
-          ## 🛡️ Repo Guardian Release
+          TAG="${{ steps.prepare_artifacts.outputs.tag_name }}"
+          cat << EOF > release_body.md
+          ## 🛡️ Repo Guardian ${TAG}
 
-          Welcome to the latest release of **Repo Guardian** — the on-device AI automated code reviewer and CI/CD generation pipeline for Android!
+          Welcome to the official release of **Repo Guardian** — the on-device AI code review and CI/CD generation platform for Android!
 
-          ### 📱 Download & Install:
-          - **Primary APK:** `RepoGuardian-${{ steps.prepare_artifacts.outputs.tag_name }}.apk` (Standard Release build)
-          - **Debug APK:** `RepoGuardian-${{ steps.prepare_artifacts.outputs.tag_name }}-debug.apk` (Developer build with verbose logging)
+          ---
 
-          ### 🚀 Features Included in this Release:
-          - **On-Device LLM Inference:** Powered by `llama.cpp` C++ engine supporting Qwen2.5-Coder (Q4_K_M).
-          - **Instant OAuth Device Flow:** Automatic code pre-fill via GitHub verification URL.
-          - **Multi-Repo Switching Dropdown:** Switch between GitHub repositories on the fly directly from the Dashboard top bar.
-          - **AI Code Review & One-Tap Fix PRs:** Static analysis + LLM-assisted diff review with automated PR creation.
-          - **Hardware Acceleration Controls:** Selectable CPU, Adreno GPU (OpenCL), and Hexagon NPU acceleration profiles.
-          - **Voice Command Trigger:** Hands-free voice trigger (`"review"`, `"check"`) for instant code review.
-          - **Storage & Cache Management:** In-app cache cleaner and GGUF model downloader/manager.
+          ### 📱 Download & Installation:
+          | Asset | Description |
+          | :--- | :--- |
+          | 📦 **\`RepoGuardian-${TAG}.apk\`** | **Standard Production Release** (Optimized & Pre-signed) |
+          | 🛠️ **\`RepoGuardian-${TAG}-debug.apk\`** | **Developer Debug Build** (Verbose logs enabled) |
+          | 🔒 **\`checksums.sha256\`** | **SHA-256 Checksums** for security verification |
 
-          ### 🔒 Checksums (SHA-256):
-          Verify download integrity using `checksums.sha256`.
+          ---
+
+          ### 🚀 Key Highlights & Features:
+          - 🧠 **On-Device LLM Inference:** Powered by embedded \`llama.cpp\` C++ engine for offline, privacy-first AI code reviews.
+          - ⚡ **Qualcomm Snapdragon Acceleration:** Supports configurable **CPU**, **Adreno GPU (OpenCL)**, and **Hexagon NPU (HTP)** inference profiles.
+          - 🔑 **Instant GitHub OAuth Device Flow:** Zero manual typing with auto-filling verification URLs.
+          - 🔽 **Multi-Repository Switcher:** Switch between your GitHub repositories in real time directly from the top bar.
+          - 🛠️ **One-Tap Fix Pull Requests:** Automatic review feedback with automated branch creation and PR submission.
+          - 🎙️ **Voice Command Trigger:** Hands-free voice trigger (*"review"*, *"check"*) for instant commit reviews.
+          - 📦 **In-App Model & Cache Manager:** One-tap Hugging Face GGUF model download and storage cleaner.
+
+          ---
           EOF
 
       - name: Create GitHub Release & Upload APKs
@@ -104,6 +111,7 @@ jobs:
           tag_name: ${{ steps.prepare_artifacts.outputs.tag_name }}
           name: "Repo Guardian ${{ steps.prepare_artifacts.outputs.tag_name }}"
           body_path: release_body.md
+          generate_release_notes: true
           draft: false
           prerelease: false
           files: |
