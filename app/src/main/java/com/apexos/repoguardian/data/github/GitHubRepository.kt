@@ -225,8 +225,13 @@ class GitHubRepository @Inject constructor(
             val errorBody = e.response()?.errorBody()?.string()
             val detailedMsg = errorBody ?: e.message()
             AppLogger.e(TAG, "GitHub REST API HTTP ${e.code()} Error for $operation: $detailedMsg")
+            val userMsg = if (e.code() == 404 && operation.contains("commitWorkflowFile")) {
+                "GitHub 404: Missing 'workflow' OAuth permission or write access. To manage .github/workflows files, please log out and sign in again to grant workflow scope."
+            } else {
+                "GitHub API HTTP ${e.code()}: $detailedMsg"
+            }
             ApiResult.Error(
-                message = "GitHub API HTTP ${e.code()}: $detailedMsg",
+                message = userMsg,
                 code = e.code()
             )
         } catch (e: Exception) {

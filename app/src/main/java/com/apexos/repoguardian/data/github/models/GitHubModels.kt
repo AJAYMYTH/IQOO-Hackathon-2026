@@ -8,7 +8,7 @@ import com.squareup.moshi.JsonClass
 @JsonClass(generateAdapter = true)
 data class DeviceCodeRequest(
     @Json(name = "client_id") val clientId: String,
-    val scope: String = "repo"
+    val scope: String = "repo,workflow"
 )
 
 @JsonClass(generateAdapter = true)
