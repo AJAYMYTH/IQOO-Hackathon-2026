@@ -26,6 +26,7 @@ object Routes {
     const val CICD_GENERATOR = "cicd_generator/{owner}/{repo}"
     const val SETTINGS = "settings"
     const val MODEL_BROWSER = "model_browser"
+    const val CHAT = "chat"
 
     fun review(owner: String, repo: String, sha: String) = "review/$owner/$repo/$sha"
     fun prStatus(owner: String, repo: String, prNumber: Int) = "pr_status/$owner/$repo/$prNumber"
@@ -81,6 +82,9 @@ fun NavGraph(navController: NavHostController) {
         }
         composable(Routes.MODEL_BROWSER) {
             ModelBrowserScreen(navController = navController)
+        }
+        composable(Routes.CHAT) {
+            com.apexos.repoguardian.ui.chat.ChatScreen(navController = navController)
         }
     }
 }

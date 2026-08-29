@@ -182,6 +182,9 @@ fun DashboardScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { navController.navigate(Routes.CHAT) }) {
+                        Icon(Icons.Default.Chat, contentDescription = "AI Chat Assistant", tint = MaterialTheme.colorScheme.primary)
+                    }
                     IconButton(onClick = {
                         navController.navigate(
                             Routes.cicdGenerator(uiState.repoOwner, uiState.repoName)

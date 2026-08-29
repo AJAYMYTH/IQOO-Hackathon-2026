@@ -1,6 +1,11 @@
 package com.apexos.repoguardian.ui.modelbrowser
 
-import androidx.compose.foundation.background
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,21 +19,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.apexos.repoguardian.data.huggingface.DownloadProgress
 import com.apexos.repoguardian.data.huggingface.FeaturedModel
 import com.apexos.repoguardian.data.huggingface.HfModelFile
 import com.apexos.repoguardian.data.huggingface.HfModelSearchResult
+import com.apexos.repoguardian.ui.theme.SeverityWarning
 import com.apexos.repoguardian.ui.theme.StatusInfo
 import com.apexos.repoguardian.ui.theme.StatusPass
-import com.apexos.repoguardian.ui.theme.SeverityWarning
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,9 +42,58 @@ fun ModelBrowserScreen(
     viewModel: ModelBrowserViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    // Request Notification Permission on Android 13+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { }
 
     LaunchedEffect(Unit) {
         viewModel.refreshState()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    // Handle Back Navigation when downloading
+    BackHandler(enabled = uiState.downloadingFilename != null) {
+        viewModel.setShowExitDialog(true)
+    }
+
+    // Exit & Background Download Permission Dialog
+    if (uiState.showExitDialog) {
+        val progressPercent = ((uiState.downloadProgress?.progressPercent ?: 0f) * 100).toInt()
+        AlertDialog(
+            onDismissRequest = { viewModel.setShowExitDialog(false) },
+            icon = { Icon(Icons.Default.CloudDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Download in Progress") },
+            text = {
+                Text("Downloading ${uiState.downloadingFilename ?: "model"} (${progressPercent}%).\n\nWould you like the download to continue safely in the background? You will receive a progress notification and the model will auto-load when done.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.setShowExitDialog(false)
+                        navController.popBackStack()
+                    }
+                ) {
+                    Text("Keep in Background")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        viewModel.cancelDownload()
+                        navController.popBackStack()
+                    }
+                ) {
+                    Text("Cancel Download")
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -54,7 +107,9 @@ fun ModelBrowserScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (uiState.selectedModel != null) {
+                        if (uiState.downloadingFilename != null) {
+                            viewModel.setShowExitDialog(true)
+                        } else if (uiState.selectedModel != null) {
                             viewModel.clearSelection()
                         } else {
                             navController.popBackStack()
@@ -180,7 +235,7 @@ private fun FeaturedModelsTab(
                     Icon(Icons.Default.Bolt, contentDescription = null, tint = StatusInfo, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Curated on-device models tested for fast offline inference on Snapdragon 8 Elite & Android devices.",
+                        text = "Curated on-device models with background download support and automatic activation.",
                         style = MaterialTheme.typography.bodySmall,
                         color = StatusInfo
                     )
@@ -202,7 +257,8 @@ private fun FeaturedModelsTab(
                 progress = if (isCurrentlyDownloading) uiState.downloadProgress else null,
                 isLoadingModel = uiState.isLoadingModel && isActive,
                 onDownload = { viewModel.downloadFeaturedModel(model) },
-                onActivate = { downloadedFile?.let { viewModel.loadAndActivateModel(it) } }
+                onActivate = { downloadedFile?.let { viewModel.loadAndActivateModel(it) } },
+                onCancel = { viewModel.cancelDownload() }
             )
         }
     }
@@ -217,7 +273,8 @@ private fun FeaturedModelCard(
     progress: DownloadProgress?,
     isLoadingModel: Boolean,
     onDownload: () -> Unit,
-    onActivate: () -> Unit
+    onActivate: () -> Unit,
+    onCancel: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -287,7 +344,7 @@ private fun FeaturedModelCard(
             // Download Progress Section
             if (isDownloading && progress != null) {
                 Spacer(modifier = Modifier.height(12.dp))
-                DownloadProgressBar(progress = progress)
+                DownloadProgressBar(progress = progress, onCancel = onCancel)
             } else {
                 Spacer(modifier = Modifier.height(14.dp))
                 Row(
@@ -345,7 +402,7 @@ private fun FeaturedModelCard(
 }
 
 @Composable
-private fun DownloadProgressBar(progress: DownloadProgress) {
+private fun DownloadProgressBar(progress: DownloadProgress, onCancel: () -> Unit) {
     Card(
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -356,11 +413,15 @@ private fun DownloadProgressBar(progress: DownloadProgress) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Downloading...",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Downloading in Background...",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Text(
                     text = "${(progress.progressPercent * 100).toInt()}%",
                     style = MaterialTheme.typography.labelMedium,
@@ -369,7 +430,7 @@ private fun DownloadProgressBar(progress: DownloadProgress) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             LinearProgressIndicator(
                 progress = { progress.progressPercent },
@@ -378,23 +439,30 @@ private fun DownloadProgressBar(progress: DownloadProgress) {
                     .height(6.dp),
             )
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "${progress.downloadedFormatted} • ${progress.speedFormatted}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-                Text(
-                    text = progress.etaFormatted,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Medium,
-                    color = SeverityWarning
-                )
+                Column {
+                    Text(
+                        text = "${progress.downloadedFormatted} • ${progress.speedFormatted}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Text(
+                        text = progress.etaFormatted,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = SeverityWarning
+                    )
+                }
+
+                TextButton(onClick = onCancel) {
+                    Text("Cancel", color = MaterialTheme.colorScheme.error)
+                }
             }
         }
     }
@@ -592,7 +660,8 @@ private fun ModelFilesView(
                             isDownloading = isCurrentlyDownloading,
                             progress = if (isCurrentlyDownloading) uiState.downloadProgress else null,
                             onDownload = { viewModel.downloadFile(selected.id, file.filename) },
-                            onActivate = { downloadedFile?.let { viewModel.loadAndActivateModel(it) } }
+                            onActivate = { downloadedFile?.let { viewModel.loadAndActivateModel(it) } },
+                            onCancel = { viewModel.cancelDownload() }
                         )
                     }
                 }
@@ -609,7 +678,8 @@ private fun ModelFileItem(
     isDownloading: Boolean,
     progress: DownloadProgress?,
     onDownload: () -> Unit,
-    onActivate: () -> Unit
+    onActivate: () -> Unit,
+    onCancel: () -> Unit
 ) {
     Card(shape = RoundedCornerShape(12.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -676,7 +746,7 @@ private fun ModelFileItem(
 
             if (isDownloading && progress != null) {
                 Spacer(modifier = Modifier.height(10.dp))
-                DownloadProgressBar(progress = progress)
+                DownloadProgressBar(progress = progress, onCancel = onCancel)
             }
         }
     }
@@ -711,7 +781,7 @@ private fun DownloadedModelsTab(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(uiState.downloadedModels) { file ->
-                val isActive = file.absolutePath == uiState.activeModelPath
+                val isActive = !uiState.activeModelPath.isNullOrBlank() && file.absolutePath == uiState.activeModelPath
                 val sizeMb = file.length().toDouble() / (1024.0 * 1024.0)
                 val sizeFormatted = if (sizeMb >= 1024.0) String.format("%.2f GB", sizeMb / 1024.0) else String.format("%.1f MB", sizeMb)
 

@@ -4,14 +4,14 @@ import android.content.Context
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -25,9 +25,17 @@ class ModelDownloadManager @Inject constructor(
     companion object {
         private const val TAG = "ModelDownloadManager"
         private const val MODELS_DIR = "models"
-        // Max model size: 4GB (to keep suitable for phone)
+        // Max model size: 4GB (suitable for phone)
         const val MAX_MODEL_SIZE_BYTES = 4L * 1024 * 1024 * 1024
     }
+
+    private val _currentDownloadingFilename = MutableStateFlow<String?>(null)
+    val currentDownloadingFilename: StateFlow<String?> = _currentDownloadingFilename
+
+    private val _currentProgress = MutableStateFlow<DownloadProgress?>(null)
+    val currentProgress: StateFlow<DownloadProgress?> = _currentProgress
+
+    private var activeCall: okhttp3.Call? = null
 
     fun getModelsDirectory(): File {
         val dir = File(context.filesDir, MODELS_DIR)
@@ -47,6 +55,10 @@ class ModelDownloadManager @Inject constructor(
     fun getDownloadedModelFile(filename: String): File? {
         val file = File(getModelsDirectory(), filename)
         return if (file.exists() && file.length() > 0) file else null
+    }
+
+    fun getAvailableStorageBytes(): Long {
+        return context.filesDir.usableSpace
     }
 
     suspend fun searchModels(query: String): List<HfModelSearchResult> {
@@ -73,7 +85,11 @@ class ModelDownloadManager @Inject constructor(
     fun downloadModel(modelId: String, filename: String): Flow<DownloadProgress> = flow {
         var input: InputStream? = null
         var output: OutputStream? = null
+        val tempFile = File(getModelsDirectory(), "$filename.tmp")
+        val outputFile = File(getModelsDirectory(), filename)
+
         try {
+            _currentDownloadingFilename.value = filename
             val url = "https://huggingface.co/$modelId/resolve/main/$filename"
             Log.d(TAG, "Starting download: $url")
 
@@ -82,27 +98,50 @@ class ModelDownloadManager @Inject constructor(
                 .addHeader("User-Agent", "RepoGuardian-Android/1.0")
                 .build()
 
-            val response = okHttpClient.newCall(request).execute()
+            val call = okHttpClient.newCall(request)
+            activeCall = call
+            val response = call.execute()
+
             if (!response.isSuccessful) {
-                emit(DownloadProgress(error = "Download failed (HTTP ${response.code}: ${response.message})"))
+                val errorMsg = when (response.code) {
+                    404 -> "Model file not found on Hugging Face (404)"
+                    429 -> "Rate limit reached. Please wait a few moments (429)"
+                    500, 502, 503 -> "Hugging Face server temporarily unavailable (${response.code})"
+                    else -> "Download failed with HTTP error ${response.code}"
+                }
+                val errorProgress = DownloadProgress(error = errorMsg)
+                _currentProgress.value = errorProgress
+                emit(errorProgress)
                 return@flow
             }
 
-            val body = response.body ?: throw RuntimeException("Empty response body from Hugging Face")
+            val body = response.body ?: throw RuntimeException("Empty response body from server")
             val totalBytes = body.contentLength()
-            val outputFile = File(getModelsDirectory(), filename)
-            val tempFile = File(getModelsDirectory(), "$filename.tmp")
+
+            // Pre-check available storage
+            val available = getAvailableStorageBytes()
+            if (totalBytes > 0 && available < totalBytes + (100L * 1024 * 1024)) {
+                val neededMb = totalBytes / (1024 * 1024)
+                val availMb = available / (1024 * 1024)
+                val errorMsg = "Insufficient storage space: Need ${neededMb}MB, only ${availMb}MB available on device."
+                val errProg = DownloadProgress(error = errorMsg)
+                _currentProgress.value = errProg
+                emit(errProg)
+                return@flow
+            }
 
             input = body.byteStream()
             output = tempFile.outputStream()
 
-            val buffer = ByteArray(64 * 1024) // 64KB buffer for optimal mobile throughput
+            val buffer = ByteArray(64 * 1024) // 64KB buffer
             var bytesDownloaded = 0L
             var lastProgressTime = System.currentTimeMillis()
             var lastDownloadedBytes = 0L
             var read: Int
 
-            emit(DownloadProgress(0, totalBytes))
+            val initialProgress = DownloadProgress(0, totalBytes)
+            _currentProgress.value = initialProgress
+            emit(initialProgress)
 
             while (input.read(buffer).also { read = it } != -1) {
                 output.write(buffer, 0, read)
@@ -110,18 +149,20 @@ class ModelDownloadManager @Inject constructor(
 
                 val now = System.currentTimeMillis()
                 val elapsed = now - lastProgressTime
-                if (elapsed >= 300) { // Update UI every 300ms
+                if (elapsed >= 300) { // Update every 300ms
                     val bytesSinceLast = bytesDownloaded - lastDownloadedBytes
                     val speed = if (elapsed > 0) (bytesSinceLast * 1000) / elapsed else 0L
                     val remainingBytes = if (totalBytes > bytesDownloaded) totalBytes - bytesDownloaded else 0L
                     val eta = if (speed > 0) remainingBytes / speed else 0L
 
-                    emit(DownloadProgress(
+                    val prog = DownloadProgress(
                         bytesDownloaded = bytesDownloaded,
                         totalBytes = totalBytes,
                         speedBytesPerSec = speed,
                         etaSeconds = eta
-                    ))
+                    )
+                    _currentProgress.value = prog
+                    emit(prog)
 
                     lastProgressTime = now
                     lastDownloadedBytes = bytesDownloaded
@@ -135,24 +176,61 @@ class ModelDownloadManager @Inject constructor(
             input.close()
             input = null
 
-            // Safely swap temp file to destination
+            // Swap temp file to destination
             if (outputFile.exists()) outputFile.delete()
             tempFile.renameTo(outputFile)
 
-            emit(DownloadProgress(
+            val finalProgress = DownloadProgress(
                 bytesDownloaded = if (totalBytes > 0) totalBytes else bytesDownloaded,
                 totalBytes = if (totalBytes > 0) totalBytes else bytesDownloaded,
                 isComplete = true
-            ))
-            Log.d(TAG, "Download finished successfully: ${outputFile.absolutePath} (${outputFile.length()} bytes)")
+            )
+            _currentProgress.value = finalProgress
+            _currentDownloadingFilename.value = null
+            emit(finalProgress)
+            Log.d(TAG, "Download finished successfully: ${outputFile.absolutePath}")
+        } catch (e: UnknownHostException) {
+            Log.e(TAG, "No internet connection", e)
+            val errProg = DownloadProgress(error = "No internet connection. Please check your network and retry.")
+            _currentProgress.value = errProg
+            _currentDownloadingFilename.value = null
+            emit(errProg)
+        } catch (e: SocketTimeoutException) {
+            Log.e(TAG, "Download timed out", e)
+            val errProg = DownloadProgress(error = "Download timed out. Network connection was too slow or dropped.")
+            _currentProgress.value = errProg
+            _currentDownloadingFilename.value = null
+            emit(errProg)
         } catch (e: Exception) {
             Log.e(TAG, "Download exception", e)
-            emit(DownloadProgress(error = "Download failed: ${e.localizedMessage ?: e.message}"))
+            if (activeCall?.isCanceled() == true) {
+                val cancelProg = DownloadProgress(error = "Download cancelled")
+                _currentProgress.value = null
+                _currentDownloadingFilename.value = null
+                emit(cancelProg)
+            } else {
+                val errProg = DownloadProgress(error = "Download error: ${e.localizedMessage ?: e.message}")
+                _currentProgress.value = errProg
+                _currentDownloadingFilename.value = null
+                emit(errProg)
+            }
         } finally {
+            activeCall = null
             try { output?.close() } catch (ignored: Throwable) {}
             try { input?.close() } catch (ignored: Throwable) {}
+            if (tempFile.exists() && _currentProgress.value?.isComplete != true) {
+                tempFile.delete()
+            }
         }
     }.flowOn(Dispatchers.IO)
+
+    fun cancelActiveDownload() {
+        activeCall?.cancel()
+        _currentDownloadingFilename.value = null
+        _currentProgress.value = null
+        val tempFiles = getModelsDirectory().listFiles()?.filter { it.name.endsWith(".tmp") } ?: emptyList()
+        tempFiles.forEach { it.delete() }
+    }
 
     fun deleteModel(filename: String): Boolean {
         val file = File(getModelsDirectory(), filename)

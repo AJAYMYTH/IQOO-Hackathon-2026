@@ -94,6 +94,18 @@ class LlamaService @Inject constructor(
         LlamaBridge.generate(contextHandle, prompt, 1024)
     }
 
+    suspend fun chat(userMessage: String, systemPrompt: String = ""): String = withContext(Dispatchers.IO) {
+        if (useMock) return@withContext getMockChatResponse(userMessage, systemPrompt)
+        if (contextHandle == 0L) throw IllegalStateException("AI Model is not loaded. Please download or select a model in AI Models Manager.")
+
+        val fullPrompt = if (systemPrompt.isNotBlank()) {
+            "<|im_start|>system\n$systemPrompt<|im_end|>\n<|im_start|>user\n$userMessage<|im_end|>\n<|im_start|>assistant\n"
+        } else {
+            "<|im_start|>user\n$userMessage<|im_end|>\n<|im_start|>assistant\n"
+        }
+        LlamaBridge.generate(contextHandle, fullPrompt, 2048)
+    }
+
     fun isLoaded(): Boolean = modelHandle != 0L || useMock
 
     fun unload() {
@@ -231,6 +243,131 @@ class LlamaService @Inject constructor(
                       run: echo 'Add build steps for ${'$'}repoName'
                     - name: Test
                       run: echo 'Add test steps'
+            """.trimIndent()
+        }
+    }
+
+    private fun getMockChatResponse(userMessage: String, systemPrompt: String): String {
+        val lower = userMessage.lowercase()
+        return when {
+            lower.contains("ci/cd") || lower.contains("pipeline") || lower.contains("github actions") || lower.contains("action") -> """
+### 🚀 Generated GitHub Actions CI/CD Pipeline
+
+Here is an automated pipeline tailored for Android/Kotlin repositories with release tagging, unit tests, and APK artifact publishing:
+
+```yaml
+name: Android CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-build:
+    name: Test & Build APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Grant Execute Permission
+        run: chmod +x gradlew
+
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build Debug & Release APKs
+        run: ./gradlew assembleDebug assembleRelease
+
+      - name: Upload APK Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-apks
+          path: app/build/outputs/apk/**/*.apk
+```
+
+**Key Features:**
+- Automated caching for Gradle dependencies.
+- Executes `testDebugUnitTest` before assembling release binaries.
+- Collects and uploads all generated APKs as artifacts.
+            """.trimIndent()
+
+            lower.contains("test") || lower.contains("unit test") || lower.contains("mockk") -> """
+### 🧪 Generated Unit & Coroutine Test Suite
+
+Here is a unit test suite using **JUnit 5**, **MockK**, and **Kotlinx Coroutines Test**:
+
+```kotlin
+@OptIn(ExperimentalCoroutinesApi::class)
+class RepoGuardianViewModelTest {
+
+    @get:Rule
+    val mainDispatcherRule = MainDispatcherRule()
+
+    private val repository = mockk<GitHubRepository>(relaxed = true)
+    private val llamaService = mockk<LlamaService>(relaxed = true)
+    private lateinit var viewModel: ReviewViewModel
+
+    @Before
+    fun setup() {
+        coEvery { repository.getCommitDiff(any(), any(), any()) } returns ApiResult.Success("diff --git a/Test.kt ...")
+        coEvery { llamaService.reviewDiff(any(), any()) } returns ReviewResult(hasIssue = false, summary = "Clean code")
+        viewModel = ReviewViewModel(repository, llamaService)
+    }
+
+    @Test
+    fun `loadReview analyzes diff successfully and updates UI state`() = runTest {
+        viewModel.loadReview("owner", "repo", "sha123")
+        
+        val state = viewModel.uiState.value
+        assertFalse(state.isLoading)
+        assertEquals("Clean code", state.reviewResult?.summary)
+    }
+}
+```
+            """.trimIndent()
+
+            lower.contains("review") || lower.contains("vulnerability") || lower.contains("security") || lower.contains("bug") -> """
+### 🛡️ Code Review & Security Analysis
+
+Based on repository context and recent commits:
+
+1. **🔒 Security Checks:**
+   - **Secret Exposure:** Ensure API keys and Client Secrets are loaded strictly via `BuildConfig` or environment variables, never hardcoded in git.
+   - **Network Security:** Verified TLS 1.3 / HTTPS endpoints with OkHttp connection pooling.
+
+2. **⚡ Performance & Memory:**
+   - **Large Model Buffers:** Streaming buffers use chunked 64KB buffers without heap bloat.
+   - **Compose Recomposition:** StateFlows utilize `StateFlow.collectAsState()` for optimal lifecycle-aware re-renders.
+
+3. **💡 Recommended Fix:**
+   - Add explicit null checks and coroutine cancellation handling when managing background operations.
+            """.trimIndent()
+
+            else -> """
+### 🤖 Repo Guardian AI Assistant
+
+I am your on-device AI assistant connected to **$systemPrompt**.
+
+Here are some things I can help you with:
+- 🔍 **Review Commits:** Inspect diffs for security vulnerabilities, memory leaks, and null safety.
+- 🚀 **Generate CI/CD Workflows:** Create GitHub Actions for Android, Node, Python, and Docker.
+- 🧪 **Write Test Suites:** Generate unit tests with MockK, JUnit, and Coroutines Test.
+- 🚢 **Deploy Pipelines:** Configure automated APK release tagging and checksum verification.
+
+What would you like to build or review next?
             """.trimIndent()
         }
     }
