@@ -44,7 +44,6 @@ android {
                         "-DANDROID_STL=c++_shared",
                         "-DCMAKE_BUILD_TYPE=Release",
                         "-DGGML_OPENMP=OFF",
-                        "-DGGML_VULKAN=ON",
                         "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16",
                         "-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG -fomit-frame-pointer",
                         "-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG -fomit-frame-pointer",
