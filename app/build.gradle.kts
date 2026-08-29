@@ -42,7 +42,13 @@ android {
                 cmake {
                     arguments.addAll(listOf(
                         "-DANDROID_STL=c++_shared",
+                        "-DCMAKE_BUILD_TYPE=Release",
                         "-DGGML_OPENMP=OFF",
+                        "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16",
+                        "-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG -fomit-frame-pointer",
+                        "-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG -fomit-frame-pointer",
+                        "-DCMAKE_C_FLAGS_DEBUG=-O3 -DNDEBUG -fomit-frame-pointer",
+                        "-DCMAKE_CXX_FLAGS_DEBUG=-O3 -DNDEBUG -fomit-frame-pointer",
                         "-DLLAMA_BUILD_COMMON=ON",
                         "-DLLAMA_BUILD_TESTS=OFF",
                         "-DLLAMA_BUILD_EXAMPLES=OFF",
@@ -50,7 +56,7 @@ android {
                         "-DLLAMA_BUILD_TOOLS=OFF",
                         "-DBUILD_SHARED_LIBS=OFF"
                     ))
-                    cppFlags.addAll(listOf("-std=c++17", "-O3"))
+                    cppFlags.addAll(listOf("-std=c++17", "-O3", "-DNDEBUG"))
                 }
             }
         }

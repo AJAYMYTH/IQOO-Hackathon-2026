@@ -56,7 +56,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_createContext(
         return 0;
     }
 
-    int n_threads = std::max(1, std::min(6, (int)std::thread::hardware_concurrency()));
+    int n_threads = std::max(2, std::min(4, (int)std::thread::hardware_concurrency()));
 
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = contextSize > 0 ? contextSize : 4096;
@@ -64,7 +64,7 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_createContext(
     ctx_params.n_ubatch = 512;
     ctx_params.n_threads = n_threads;
     ctx_params.n_threads_batch = n_threads;
-    ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
+    ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
 
     llama_context *ctx = llama_init_from_model(model, ctx_params);
     if (ctx == nullptr) {
