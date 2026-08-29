@@ -43,7 +43,7 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ secrets.GITHUB_CLIENT_ID || 'Ov23liZPOsPuWwr6VQTG' }}
         run: |
-          ./gradlew assembleRelease assembleDebug -x lint -x lintVitalAnalyzeRelease --stacktrace
+          ./gradlew assembleRelease assembleDebug --stacktrace
 
       - name: Prepare APK Artifacts & Checksums
         id: prepare_artifacts

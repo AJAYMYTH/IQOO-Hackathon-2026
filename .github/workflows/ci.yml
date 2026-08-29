@@ -33,7 +33,7 @@ jobs:
       - name: Run Build & Assemble Debug APK
         env:
           GITHUB_CLIENT_ID: ${{ secrets.GITHUB_CLIENT_ID || 'Ov23liZPOsPuWwr6VQTG' }}
-        run: ./gradlew assembleDebug -x lint -x lintVitalAnalyzeRelease --stacktrace
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
