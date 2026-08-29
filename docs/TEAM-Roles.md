@@ -8,11 +8,6 @@ Roles are primary ownership, not silos — all three should understand the whole
 
 ## Member A — Mobile / On-Device AI Lead
 
-### Pre-Hackathon
-- Get MLC-LLM's Android reference app building and running on a real Snapdragon device
-- Convert/quantize Qwen2.5-Coder-3B and 1.5B, benchmark both, pick the primary
-- Draft and test the analysis prompt (diff in, structured fix out) offline against the model
-
 ### Red Light
 - Set up Termux dev environment on the phone, verify Office Kit remote-control workflow works for actual typing/editing
 - Build the Splash, Auth, Repo Picker, Dashboard, and Review screens
@@ -32,11 +27,6 @@ Roles are primary ownership, not silos — all three should understand the whole
 
 ## Member B — Backend / Integration / DevOps Lead
 
-### Pre-Hackathon
-- Build and test the GitHub API client (device auth flow, list commits, diffs, branch/commit/PR creation, check-run status) against a throwaway repo
-- Set up and rehearse the self-hosted GitHub Actions runner end-to-end on the laptop
-- Prepare the dedicated demo repo: one reproducible planted bug, no existing CI/CD
-
 ### Red Light
 - Since this phase is phone-only, focus on: refining the GitHub API glue code logic (as Kotlin/Termux-testable scripts) and the CI/CD-YAML-generation prompt, which Member A can call into once screens exist
 - Support Member A's Termux setup if you're more comfortable with it
@@ -53,10 +43,6 @@ Roles are primary ownership, not silos — all three should understand the whole
 ---
 
 ## Member C — Product / Design / Pitch Lead
-
-### Pre-Hackathon
-- Finalize architecture diagram, deck skeleton (via the Replit master prompt), and video walkthrough script
-- Prepare the "Why Us" narrative and rehearse framing that avoids revealing exact prompt/architecture specifics to competitors
 
 ### Red Light
 - Since hands-on build is phone-focused, use this phase for: UI copy, in-app microcopy, testing the app as a first-time user on the phone as screens come online, refining the demo script against what's actually being built
