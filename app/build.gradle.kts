@@ -43,7 +43,6 @@ android {
                     arguments.addAll(listOf(
                         "-DANDROID_STL=c++_shared",
                         "-DGGML_OPENMP=OFF",
-                        "-DGGML_VULKAN=ON",
                         "-DLLAMA_BUILD_COMMON=ON",
                         "-DLLAMA_BUILD_TESTS=OFF",
                         "-DLLAMA_BUILD_EXAMPLES=OFF",

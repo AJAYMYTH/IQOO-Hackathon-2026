@@ -33,7 +33,6 @@ if (EXISTS "${LLAMA_CPP_DIR}/include/llama.h")
         ggml
         log
         android
-        vulkan
     )
 else()
     message(WARNING "llama.cpp not found at ${LLAMA_CPP_DIR}. Building stub bridge for testing.")
