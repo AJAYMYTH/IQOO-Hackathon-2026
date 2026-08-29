@@ -26,12 +26,16 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "GITHUB_CLIENT_ID", "\"${localProperties.getProperty("GITHUB_CLIENT_ID", "")}\"")
+        val githubClientId = localProperties.getProperty("GITHUB_CLIENT_ID")
+            ?: System.getenv("GITHUB_CLIENT_ID")
+            ?: "Ov23liZPOsPuWwr6VQTG"
+        buildConfigField("String", "GITHUB_CLIENT_ID", "\"$githubClientId\"")
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
