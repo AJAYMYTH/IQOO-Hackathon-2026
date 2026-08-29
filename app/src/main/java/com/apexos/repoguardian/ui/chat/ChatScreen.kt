@@ -58,47 +58,46 @@ fun ChatScreen(
 
     val isImeVisible = WindowInsets.isImeVisible
 
-    // Track whether the user is at the bottom of the list
-    val isAtBottom by remember {
-        derivedStateOf {
-            val visibleItems = listState.layoutInfo.visibleItemsInfo
-            if (visibleItems.isEmpty()) return@derivedStateOf true
-            val lastVisibleIndex = visibleItems.last().index
-            val totalItems = listState.layoutInfo.totalItemsCount
-            lastVisibleIndex >= totalItems - 1
+    // Analyze current generation & thinking state cleanly
+    val lastMessage = uiState.messages.lastOrNull()
+    val isAiCurrentlyThinking = uiState.isGenerating && lastMessage != null && !lastMessage.isUser && isMessageInThinkingPhase(lastMessage.content)
+
+    val renderableMessages = remember(uiState.messages) {
+        uiState.messages.filter { message ->
+            if (message.isUser) {
+                true
+            } else {
+                val cleanAnswer = extractCleanAnswer(message.content)
+                cleanAnswer.isNotBlank()
+            }
         }
     }
 
-    var userScrolledUp by remember { mutableStateOf(false) }
+    // Auto-scroll continuously as new tokens stream in throughout the entire AI generation
+    val lastRawContent = lastMessage?.content ?: ""
+    val lastContentLength = lastRawContent.length
 
-    // Detect user manual scroll interaction
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress) {
-            userScrolledUp = !isAtBottom
+    LaunchedEffect(lastContentLength, uiState.messages.size, uiState.isGenerating) {
+        val totalItems = renderableMessages.size + (if (isAiCurrentlyThinking) 1 else 0)
+        if (totalItems > 0 && uiState.isGenerating) {
+            // Scroll to the bottom of the latest streaming content
+            listState.scrollToItem(totalItems - 1, 100000)
         }
     }
 
-    // Auto-scroll when new messages are added or when user sends message
+    // Auto-scroll smoothly when new messages are sent or added
     LaunchedEffect(uiState.messages.size) {
-        userScrolledUp = false
-        if (uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.size - 1)
-        }
-    }
-
-    // Auto-scroll smoothly during live AI streaming responses (without forcing if user scrolled up)
-    val lastMessageContent = uiState.messages.lastOrNull()?.content ?: ""
-    LaunchedEffect(lastMessageContent, uiState.isGenerating) {
-        if (uiState.isGenerating && !userScrolledUp && !listState.isScrollInProgress) {
-            val targetIndex = (uiState.messages.size - 1).coerceAtLeast(0)
-            listState.scrollToItem(targetIndex)
+        val totalItems = renderableMessages.size + (if (isAiCurrentlyThinking) 1 else 0)
+        if (totalItems > 0) {
+            listState.animateScrollToItem(totalItems - 1, 100000)
         }
     }
 
     // Auto-scroll when IME keyboard opens
     LaunchedEffect(isImeVisible) {
-        if (!userScrolledUp && uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.size - 1)
+        val totalItems = renderableMessages.size + (if (isAiCurrentlyThinking) 1 else 0)
+        if (totalItems > 0) {
+            listState.animateScrollToItem(totalItems - 1, 100000)
         }
     }
 
@@ -484,10 +483,6 @@ fun ChatScreen(
             }
         }
     ) { padding ->
-        // Analyze current generation & thinking state cleanly
-        val lastMessage = uiState.messages.lastOrNull()
-        val isAiCurrentlyThinking = uiState.isGenerating && lastMessage != null && !lastMessage.isUser && isMessageInThinkingPhase(lastMessage.content)
-
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -497,17 +492,6 @@ fun ChatScreen(
             contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Render all historical & ready messages
-            val renderableMessages = uiState.messages.filter { message ->
-                if (message.isUser) {
-                    true
-                } else {
-                    // For AI messages: only render if there is actual clean answer content ready
-                    val cleanAnswer = extractCleanAnswer(message.content)
-                    cleanAnswer.isNotBlank()
-                }
-            }
-
             items(items = renderableMessages, key = { it.id }) { message ->
                 val isStreaming = uiState.isGenerating &&
                         !message.isUser &&
