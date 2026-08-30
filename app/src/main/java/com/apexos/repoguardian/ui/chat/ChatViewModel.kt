@@ -297,9 +297,10 @@ Live repository data loaded from GitHub REST API ($fileCountText, $commitCountTe
     }
 
     fun toggleThinkMode() {
-        if (_uiState.value.isThinkingModel) {
-            _uiState.value = _uiState.value.copy(isThinkModeEnabled = !_uiState.value.isThinkModeEnabled)
-        }
+        // Think mode is user-controllable for any model.
+        // On reasoning models (DeepSeek-R1, QwQ, etc.) it enables <think>…</think> chains.
+        // On standard models the instruction is harmless — model simply won't produce think tags.
+        _uiState.value = _uiState.value.copy(isThinkModeEnabled = !_uiState.value.isThinkModeEnabled)
     }
 
     fun setRepoDropdownOpen(open: Boolean) {
@@ -381,6 +382,16 @@ Live repository data loaded from GitHub REST API ($fileCountText, $commitCountTe
                     val gpuLayers = if (backend == "gpu" || backend == "npu") 33 else 0
                     AppLogger.i(TAG, "Auto-loading model before chat: $targetPath (layers: $gpuLayers)")
                     llamaService.loadModel(targetPath, gpuLayers)
+
+                    // Sync model identity into UI state so think-mode toggle reflects this model
+                    val isThinking = llamaService.isReasoningModel(targetPath)
+                    val modelName = File(targetPath).nameWithoutExtension
+                    _uiState.value = _uiState.value.copy(
+                        activeModelName = modelName,
+                        isThinkingModel = isThinking,
+                        // Preserve user's manual toggle if they already changed it; otherwise default to model capability
+                        isThinkModeEnabled = if (_uiState.value.activeModelName == "No Model Loaded") isThinking else _uiState.value.isThinkModeEnabled
+                    )
                 }
             }
 

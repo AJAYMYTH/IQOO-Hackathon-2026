@@ -346,7 +346,11 @@ fun ChatScreen(
                                 ),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .clickable { viewModel.toggleThinkMode() }
+                                    .clickable {
+                                        viewModel.toggleThinkMode()
+                                        val msg = if (uiState.isThinkModeEnabled) "Deep Think OFF" else "Deep Think ON — model will reason before answering"
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    }
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -360,7 +364,7 @@ fun ChatScreen(
                                     )
                                     Spacer(modifier = Modifier.width(5.dp))
                                     Text(
-                                        text = if (uiState.isThinkModeEnabled) "Think ON" else "Think OFF",
+                                        text = if (uiState.isThinkModeEnabled) "Deep Think" else "Think",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.SemiBold,
                                         color = if (uiState.isThinkModeEnabled) BrandEmeraldLight else BrandOnBgMuted
