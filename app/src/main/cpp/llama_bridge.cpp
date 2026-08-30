@@ -9,6 +9,7 @@
 
 #define TAG "LlamaBridge"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 
@@ -34,6 +35,14 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_loadModel(
     model_params.n_gpu_layers = nGpuLayers;
 
     llama_model *model = llama_model_load_from_file(path, model_params);
+    
+    // If GPU offload failed on this specific device, fallback to CPU
+    if (model == nullptr && nGpuLayers > 0) {
+        LOGW("GPU layer offload failed (%d layers), attempting CPU-only fallback", nGpuLayers);
+        model_params.n_gpu_layers = 0;
+        model = llama_model_load_from_file(path, model_params);
+    }
+
     if (path) env->ReleaseStringUTFChars(modelPath, path);
 
     if (model == nullptr) {
@@ -57,23 +66,52 @@ Java_com_apexos_repoguardian_data_llm_LlamaBridge_createContext(
         return 0;
     }
 
-    int n_threads = std::max(2, std::min(4, (int)std::thread::hardware_concurrency()));
+    int hw_threads = (int)std::thread::hardware_concurrency();
+    int n_threads = hw_threads > 0 ? std::max(1, std::min(4, hw_threads <= 4 ? hw_threads : hw_threads - 2)) : 4;
 
-    llama_context_params ctx_params = llama_context_default_params();
-    ctx_params.n_ctx = contextSize > 0 ? contextSize : 4096;
-    ctx_params.n_batch = 512;
-    ctx_params.n_ubatch = 512;
-    ctx_params.n_threads = n_threads;
-    ctx_params.n_threads_batch = n_threads;
-    ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
+    int requested_ctx = contextSize > 0 ? contextSize : 4096;
+    std::vector<int> ctx_candidates;
+    ctx_candidates.push_back(requested_ctx);
+    if (requested_ctx > 2048) ctx_candidates.push_back(2048);
+    if (requested_ctx > 1024) ctx_candidates.push_back(1024);
+    if (requested_ctx > 512) ctx_candidates.push_back(512);
 
-    llama_context *ctx = llama_init_from_model(model, ctx_params);
+    llama_context *ctx = nullptr;
+    int successful_ctx = 0;
+
+    for (int candidate_ctx : ctx_candidates) {
+        llama_context_params ctx_params = llama_context_default_params();
+        ctx_params.n_ctx = candidate_ctx;
+        ctx_params.n_batch = std::min(512, candidate_ctx);
+        ctx_params.n_ubatch = std::min(512, candidate_ctx);
+        ctx_params.n_threads = n_threads;
+        ctx_params.n_threads_batch = n_threads;
+        ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
+
+        ctx = llama_init_from_model(model, ctx_params);
+        if (ctx != nullptr) {
+            successful_ctx = candidate_ctx;
+            LOGI("Context created successfully with size %d, threads: %d", successful_ctx, n_threads);
+            break;
+        }
+
+        // Try without flash attention if it failed
+        ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_DISABLED;
+        ctx = llama_init_from_model(model, ctx_params);
+        if (ctx != nullptr) {
+            successful_ctx = candidate_ctx;
+            LOGI("Context created successfully (flash_attn disabled) with size %d, threads: %d", successful_ctx, n_threads);
+            break;
+        }
+
+        LOGW("Failed to allocate context size %d, trying smaller fallback...", candidate_ctx);
+    }
+
     if (ctx == nullptr) {
-        LOGE("Failed to create llama_context");
+        LOGE("Failed to create llama_context for all candidate sizes");
         return 0;
     }
 
-    LOGI("Context created successfully with size %d, threads: %d, flash_attn: enabled", ctx_params.n_ctx, n_threads);
     return reinterpret_cast<jlong>(ctx);
 }
 

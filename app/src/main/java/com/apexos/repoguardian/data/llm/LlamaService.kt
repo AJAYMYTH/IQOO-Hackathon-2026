@@ -89,11 +89,27 @@ class LlamaService @Inject constructor(
                 }
             }
 
-            // 3. Auto-discover model in common Android Download paths (safely wrapped)
+            // 3. Auto-discover model in app-specific external storage
+            val extModelsDir = context.getExternalFilesDir("models")
+            if (extModelsDir != null && extModelsDir.exists()) {
+                val extGgufFiles = extModelsDir.listFiles()?.filter { it.extension.equals("gguf", ignoreCase = true) && it.length() > 0 } ?: emptyList()
+                if (extGgufFiles.isNotEmpty()) {
+                    val best = extGgufFiles.maxByOrNull { it.lastModified() } ?: extGgufFiles.first()
+                    preferencesManager.saveModelPath(best.absolutePath)
+                    val backend = preferencesManager.getBackend()
+                    val gpuLayers = if (backend == "gpu" || backend == "npu") 33 else 0
+                    AppLogger.i(TAG, "Auto-discovered external storage GGUF model: ${best.name}")
+                    loadModel(best.absolutePath, gpuLayers)
+                    return@withContext
+                }
+            }
+
+            // 4. Auto-discover model in Android Downloads directory
             try {
-                val downloadDir = File("/sdcard/Download")
-                if (downloadDir.exists() && downloadDir.canRead()) {
-                    val sideLoaded = downloadDir.listFiles()?.filter { it.extension.equals("gguf", ignoreCase = true) && it.length() > 0 } ?: emptyList()
+                val downloadDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                val targetDir = if (downloadDir != null && downloadDir.exists() && downloadDir.canRead()) downloadDir else File("/sdcard/Download")
+                if (targetDir.exists() && targetDir.canRead()) {
+                    val sideLoaded = targetDir.listFiles()?.filter { it.extension.equals("gguf", ignoreCase = true) && it.length() > 0 } ?: emptyList()
                     if (sideLoaded.isNotEmpty()) {
                         val first = sideLoaded.first()
                         preferencesManager.saveModelPath(first.absolutePath)
@@ -135,13 +151,18 @@ class LlamaService @Inject constructor(
                     }
 
                     if (!LlamaBridge.isAvailable) {
-                        val err = "LlamaBridge native library not available in runtime"
+                        val err = "LlamaBridge native library not available on this device"
                         AppLogger.e(TAG, err)
                         _modelState.value = ModelState.Error(err)
                         return@withContext
                     }
 
                     modelHandle = LlamaBridge.loadModel(path, nGpuLayers)
+                    if (modelHandle == 0L && nGpuLayers > 0) {
+                        AppLogger.w(TAG, "GPU model loading failed, retrying with CPU mode (0 GPU layers)...")
+                        modelHandle = LlamaBridge.loadModel(path, 0)
+                    }
+
                     if (modelHandle == 0L) {
                         val err = "LlamaBridge failed to load GGUF model: ${file.name}"
                         AppLogger.e(TAG, err)

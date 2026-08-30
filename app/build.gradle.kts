@@ -14,8 +14,10 @@ if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
 val sdkDirProp = localProperties.getProperty("sdk.dir") ?: System.getenv("ANDROID_SDK_ROOT") ?: System.getenv("ANDROID_HOME")
-val ndkFolder = if (sdkDirProp != null) file("$sdkDirProp/ndk/27.2.12479018") else null
-val hasValidNdk = ndkFolder != null && ndkFolder.exists() && file("$ndkFolder/source.properties").exists()
+val ndkBaseDir = if (sdkDirProp != null) file("$sdkDirProp/ndk") else null
+val ndkFolders = if (ndkBaseDir != null && ndkBaseDir.exists()) ndkBaseDir.listFiles()?.filter { it.isDirectory && file("${it.absolutePath}/source.properties").exists() } else null
+val selectedNdk = ndkFolders?.firstOrNull { it.name == "27.2.12479018" } ?: ndkFolders?.maxByOrNull { it.name }
+val hasValidNdk = selectedNdk != null && selectedNdk.exists()
 
 android {
     namespace = "com.apexos.repoguardian"
@@ -44,7 +46,6 @@ android {
                         "-DANDROID_STL=c++_shared",
                         "-DCMAKE_BUILD_TYPE=Release",
                         "-DGGML_OPENMP=OFF",
-                        "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16",
                         "-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG -fomit-frame-pointer",
                         "-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG -fomit-frame-pointer",
                         "-DCMAKE_C_FLAGS_DEBUG=-O3 -DNDEBUG -fomit-frame-pointer",
@@ -100,7 +101,7 @@ android {
                 version = "3.22.1"
             }
         }
-        ndkVersion = "27.2.12479018"
+        ndkVersion = selectedNdk?.name ?: "27.2.12479018"
     }
 }
 

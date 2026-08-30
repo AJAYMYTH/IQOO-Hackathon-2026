@@ -1,11 +1,17 @@
 package com.apexos.repoguardian.data.llm
 
 object LlamaBridge {
-    val isAvailable: Boolean = try {
-        System.loadLibrary("llama_bridge")
-        true
-    } catch (e: Throwable) {
-        false
+    private const val TAG = "LlamaBridge"
+
+    val isAvailable: Boolean by lazy {
+        try {
+            System.loadLibrary("llama_bridge")
+            android.util.Log.i(TAG, "Native library libllama_bridge.so loaded successfully")
+            true
+        } catch (e: Throwable) {
+            android.util.Log.e(TAG, "Failed to load libllama_bridge.so: ${e.message}", e)
+            false
+        }
     }
 
     // Load model from GGUF file path, returns model handle (pointer)
