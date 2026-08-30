@@ -12,6 +12,8 @@ import com.apexos.repoguardian.data.huggingface.ModelDownloadManager
 import com.apexos.repoguardian.data.llm.InferenceMetrics
 import com.apexos.repoguardian.data.llm.LlamaService
 import com.apexos.repoguardian.data.preferences.PreferencesManager
+import com.apexos.repoguardian.data.voice.VoiceService
+import com.apexos.repoguardian.data.voice.VoiceState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -69,13 +71,13 @@ data class LiveRepoContext(
 )
 
 data class ChatUiState(
-    val messages: List<ChatMessage> = emptyList(),
-    val isGenerating: Boolean = false,
     val repoOwner: String = "",
     val repoName: String = "",
     val liveRepoContext: LiveRepoContext = LiveRepoContext(),
     val availableRepos: List<Repo> = emptyList(),
     val isRepoDropdownOpen: Boolean = false,
+    val messages: List<ChatMessage> = emptyList(),
+    val isGenerating: Boolean = false,
     val downloadedModels: List<File> = emptyList(),
     val isModelDropdownOpen: Boolean = false,
     val isThinkingModel: Boolean = false,
@@ -90,7 +92,8 @@ class ChatViewModel @Inject constructor(
     private val llamaService: LlamaService,
     private val gitHubRepository: GitHubRepository,
     private val preferencesManager: PreferencesManager,
-    private val modelDownloadManager: ModelDownloadManager
+    private val modelDownloadManager: ModelDownloadManager,
+    val voiceService: VoiceService
 ) : ViewModel() {
 
     companion object {
@@ -99,6 +102,20 @@ class ChatViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState
+
+    val voiceState: StateFlow<VoiceState> = voiceService.state
+
+    fun startVoiceDictation() {
+        voiceService.startListening()
+    }
+
+    fun stopVoiceDictation() {
+        voiceService.stop()
+    }
+
+    fun resetVoiceState() {
+        voiceService.resetState()
+    }
 
     private var currentGenerationJob: kotlinx.coroutines.Job? = null
 

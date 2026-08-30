@@ -53,15 +53,30 @@ fun DashboardScreen(
     LaunchedEffect(voiceState) {
         when (val state = voiceState) {
             is VoiceState.Result -> {
-                if (state.isTrigger && uiState.commits.isNotEmpty()) {
-                    val latestCommit = uiState.commits.first()
-                    viewModel.resetVoiceState()
-                    navController.navigate(
-                        Routes.review(uiState.repoOwner, uiState.repoName, latestCommit.sha)
-                    )
-                } else if (!state.isTrigger) {
-                    Toast.makeText(context, "Say 'review' or 'check' to trigger analysis", Toast.LENGTH_SHORT).show()
-                    viewModel.resetVoiceState()
+                viewModel.resetVoiceState()
+                Toast.makeText(context, "🎙️ \"${state.text}\"", Toast.LENGTH_SHORT).show()
+                when (state.intent) {
+                    is com.apexos.repoguardian.data.voice.VoiceIntent.Review -> {
+                        if (uiState.commits.isNotEmpty()) {
+                            val latestCommit = uiState.commits.first()
+                            navController.navigate(
+                                Routes.review(uiState.repoOwner, uiState.repoName, latestCommit.sha)
+                            )
+                        } else {
+                            Toast.makeText(context, "No commits available to review", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    is com.apexos.repoguardian.data.voice.VoiceIntent.CiCd -> {
+                        if (uiState.repoOwner.isNotBlank() && uiState.repoName.isNotBlank()) {
+                            navController.navigate(
+                                Routes.cicdGenerator(uiState.repoOwner, uiState.repoName)
+                            )
+                        }
+                    }
+                    is com.apexos.repoguardian.data.voice.VoiceIntent.Chat,
+                    is com.apexos.repoguardian.data.voice.VoiceIntent.Dictation -> {
+                        navController.navigate(Routes.CHAT)
+                    }
                 }
             }
             is VoiceState.Error -> {
@@ -208,6 +223,19 @@ fun DashboardScreen(
                         },
                         actions = {
                             IconButton(onClick = {
+                                if (voiceState is VoiceState.Listening) {
+                                    viewModel.stopVoiceTrigger()
+                                } else {
+                                    permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = if (voiceState is VoiceState.Listening) Icons.Default.MicOff else Icons.Default.Mic,
+                                    contentDescription = "Voice Trigger",
+                                    tint = if (voiceState is VoiceState.Listening) StatusFail else BrandEmeraldLight
+                                )
+                            }
+                            IconButton(onClick = {
                                 if (uiState.repoOwner.isNotBlank() && uiState.repoName.isNotBlank()) {
                                     navController.navigate(
                                         Routes.cicdGenerator(uiState.repoOwner, uiState.repoName)
@@ -242,23 +270,41 @@ fun DashboardScreen(
             if (voiceState is VoiceState.Listening) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = BrandSurfaceElev
+                    color = BrandSurfaceElev,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmerald.copy(alpha = 0.4f))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = BrandEmerald
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "Listening... Say 'review latest commit'",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = BrandOnBg
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = BrandEmerald
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Listening... Say 'Review', 'CI/CD', or ask AI",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BrandOnBg,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewModel.stopVoiceTrigger() },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Cancel",
+                                tint = BrandOnBgMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
