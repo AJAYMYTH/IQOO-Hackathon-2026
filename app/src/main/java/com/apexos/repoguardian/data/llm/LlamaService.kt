@@ -664,28 +664,6 @@ class LlamaService @Inject constructor(
     }
 
     private fun parseReviewResult(response: String, metrics: InferenceMetrics? = null): ReviewResult {
-        return try {
-            val jsonMatch = Regex("\\{[\\s\\S]*\\}").find(response)
-            val json = jsonMatch?.value ?: response
-            val adapter = moshi.adapter(ReviewResult::class.java)
-            val parsed = adapter.fromJson(json) ?: ReviewResult(summary = response)
-            parsed.copy(metrics = metrics)
-        } catch (e: Exception) {
-            AppLogger.w(TAG, "Failed to parse structured JSON from AI review output, returning raw response", e)
-            ReviewResult(
-                hasIssue = true,
-                summary = response.take(150),
-                issues = listOf(
-                    CodeIssue(
-                        file = "diff",
-                        line = 1,
-                        severity = "info",
-                        description = response,
-                        fix = "Apply suggested review changes"
-                    )
-                ),
-                metrics = metrics
-            )
-        }
+        return ReviewOutputParser.parse(response, moshi, metrics)
     }
 }

@@ -8,8 +8,10 @@ import com.apexos.repoguardian.data.github.ApiResult
 import com.apexos.repoguardian.data.github.GitHubRepository
 import com.apexos.repoguardian.data.github.models.CommitDiffResponse
 import com.apexos.repoguardian.data.github.models.PullRequest
+import com.apexos.repoguardian.data.llm.CodeIssue
 import com.apexos.repoguardian.data.llm.LlamaService
 import com.apexos.repoguardian.data.llm.ReviewResult
+import com.apexos.repoguardian.data.llm.Severity
 import com.apexos.repoguardian.data.preferences.PreferencesManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,18 +19,36 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+enum class SeverityFilter(val label: String) {
+    ALL("All"),
+    CRITICAL("Critical"),
+    WARNING("Warning"),
+    INFO("Info")
+}
+
 data class ReviewUiState(
     val owner: String = "",
     val repo: String = "",
     val sha: String = "",
     val commitDiff: CommitDiffResponse? = null,
     val reviewResult: ReviewResult? = null,
+    val selectedSeverityFilter: SeverityFilter = SeverityFilter.ALL,
     val isLoadingDiff: Boolean = false,
     val isAnalyzing: Boolean = false,
     val isCreatingPr: Boolean = false,
     val createdPr: PullRequest? = null,
     val error: String? = null
-)
+) {
+    val filteredIssues: List<CodeIssue> get() {
+        val allSorted = reviewResult?.sortedIssues ?: emptyList()
+        return when (selectedSeverityFilter) {
+            SeverityFilter.ALL -> allSorted
+            SeverityFilter.CRITICAL -> allSorted.filter { it.severityEnum == Severity.CRITICAL }
+            SeverityFilter.WARNING -> allSorted.filter { it.severityEnum == Severity.WARNING }
+            SeverityFilter.INFO -> allSorted.filter { it.severityEnum == Severity.INFO || it.severityEnum == Severity.UNKNOWN }
+        }
+    }
+}
 
 @HiltViewModel
 class ReviewViewModel @Inject constructor(
@@ -57,9 +77,21 @@ class ReviewViewModel @Inject constructor(
         loadAndReview()
     }
 
+    fun setSeverityFilter(filter: SeverityFilter) {
+        _uiState.value = _uiState.value.copy(selectedSeverityFilter = filter)
+    }
+
+    fun retryAnalysis() {
+        val diff = _uiState.value.commitDiff
+        if (diff != null) {
+            analyzeWithLlm(diff)
+        } else {
+            loadAndReview()
+        }
+    }
+
     private fun loadAndReview() {
         viewModelScope.launch {
-            // 1. Load diff
             _uiState.value = _uiState.value.copy(isLoadingDiff = true, error = null)
             AppLogger.i(TAG, "Loading commit diff from GitHub REST API for sha=$sha ($owner/$repo)")
             when (val result = gitHubRepository.getCommitDiff(owner, repo, sha)) {
@@ -69,7 +101,6 @@ class ReviewViewModel @Inject constructor(
                         isLoadingDiff = false
                     )
                     AppLogger.i(TAG, "Commit diff loaded (${result.data.files?.size ?: 0} files), starting AI analysis")
-                    // 2. Run LLM analysis
                     analyzeWithLlm(result.data)
                 }
                 is ApiResult.Error -> {
@@ -85,7 +116,7 @@ class ReviewViewModel @Inject constructor(
 
     private fun analyzeWithLlm(diff: CommitDiffResponse) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isAnalyzing = true)
+            _uiState.value = _uiState.value.copy(isAnalyzing = true, error = null)
             try {
                 val diffText = diff.files?.joinToString("\n\n") { file ->
                     "--- a/${file.filename}\n+++ b/${file.filename}\n${file.patch ?: "(file changes without text patch)"}"
@@ -111,8 +142,6 @@ class ReviewViewModel @Inject constructor(
         }
     }
 
-
-
     fun openPullRequest() {
         viewModelScope.launch {
             val review = _uiState.value.reviewResult ?: return@launch
@@ -123,18 +152,50 @@ class ReviewViewModel @Inject constructor(
 
             val prTitle = "fix: ${review.summary.take(60)}"
             val prBody = buildString {
-                appendLine("## Repo Guardian - Automated Fix")
+                appendLine("## Repo Guardian Review Summary")
                 appendLine()
-                appendLine("**Analyzed commit:** ${sha.take(7)}")
+                appendLine("- **Critical:** ${review.criticalCount}")
+                appendLine("- **Warning:** ${review.warningCount}")
+                appendLine("- **Info:** ${review.infoCount}")
                 appendLine()
-                appendLine("### Issues Found")
-                review.issues.forEach { issue ->
-                    appendLine("- **[${issue.severity.uppercase()}]** ${issue.description}")
-                    issue.fix?.let { appendLine("  - Fix: $it") }
+
+                val criticals = review.issues.filter { it.severityEnum == Severity.CRITICAL }
+                if (criticals.isNotEmpty()) {
+                    appendLine("### 🚨 Critical Issues")
+                    criticals.forEach { issue ->
+                        val loc = if (issue.file != null) " in `${issue.file}${if (issue.line != null) ":${issue.line}" else ""}`" else ""
+                        appendLine("- **${issue.displayTitle}**$loc")
+                        appendLine("  ${issue.description}")
+                        issue.displayFix?.let { appendLine("  - *Remediation:* $it") }
+                    }
+                    appendLine()
                 }
-                appendLine()
+
+                val warnings = review.issues.filter { it.severityEnum == Severity.WARNING }
+                if (warnings.isNotEmpty()) {
+                    appendLine("### ⚠️ Warning Issues")
+                    warnings.forEach { issue ->
+                        val loc = if (issue.file != null) " in `${issue.file}${if (issue.line != null) ":${issue.line}" else ""}`" else ""
+                        appendLine("- **${issue.displayTitle}**$loc")
+                        appendLine("  ${issue.description}")
+                        issue.displayFix?.let { appendLine("  - *Remediation:* $it") }
+                    }
+                    appendLine()
+                }
+
+                val infos = review.issues.filter { it.severityEnum == Severity.INFO || it.severityEnum == Severity.UNKNOWN }
+                if (infos.isNotEmpty()) {
+                    appendLine("### ℹ️ Informational & Style")
+                    infos.forEach { issue ->
+                        val loc = if (issue.file != null) " in `${issue.file}${if (issue.line != null) ":${issue.line}" else ""}`" else ""
+                        appendLine("- **${issue.displayTitle}**$loc")
+                        issue.displayFix?.let { appendLine("  - *Suggestion:* $it") }
+                    }
+                    appendLine()
+                }
+
                 appendLine("---")
-                appendLine("*Generated by Repo Guardian (On-Device AI)*")
+                appendLine("*Generated locally and privately on-device by Repo Guardian AI.*")
             }
 
             val repoResult = gitHubRepository.getRepo(owner, repo)
@@ -146,7 +207,7 @@ class ReviewViewModel @Inject constructor(
                 baseSha = sha,
                 filePath = firstFile.filename,
                 fixedContent = review.fixedCode ?: "",
-                commitMessage = "fix: ${review.issues.firstOrNull()?.description?.take(50) ?: "code improvement"}",
+                commitMessage = "fix: ${review.issues.firstOrNull()?.displayTitle?.take(50) ?: "code improvement"}",
                 prTitle = prTitle,
                 prBody = prBody,
                 baseBranch = defaultBranch
