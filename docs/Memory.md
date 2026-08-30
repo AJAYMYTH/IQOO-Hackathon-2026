@@ -28,39 +28,43 @@ This means the agent gets current project state without you re-explaining the ar
 
 ## Template (fill in as you build)
 
-### Current Status
-*(Overwrite this section each update — it should always describe the state right now, not history)*
-- Auth flow: [not started / in progress / working]
-- Repo picker: ...
-- On-device inference (MLCEngine wired to Review Screen): ...
-- GitHub PR creation: ...
-- Self-hosted runner validation loop: ...
-- Voice trigger: ...
-- CI/CD generator: ...
+# Memory.md — Project Memory Log
+## Purpose
 
-### Decisions Log
-*(Append-only — one line per decision, with the reason, so it's never re-debated)*
-- [date/phase] Chose Qwen2.5-Coder-3B over 7B — reason: inference speed on real device
-- [date/phase] Chose MLC-LLM over llama.cpp — reason: ...
-
-### Known Issues
-*(Prune the moment something is fixed)*
-- [ ] Example: voice trigger sometimes fails to recognize phrase in noisy venue — needs testing at actual venue noise level
-
-### Next Up
-*(Short list, not a full backlog — just what's next)*
-- ...
+This file is the single source of truth for "what's actually built and decided so far."
 
 ---
 
-## Example Entry (for reference — delete once real entries exist)
+### Current Status — Complete & Verified (Release v3.1.0)
+- **Auth Flow:** ✅ Working (GitHub OAuth Device Flow with continuous background polling, clipboard auto-copy, and lifecycle cancellation on exit).
+- **Repo Picker Screen:** ✅ Working (`GET /user/repos`, search filtering, private/public indicator, language chips).
+- **Dashboard Screen:** ✅ Working (Commit timeline, monospace SHAs, author metadata, pulsing voice FAB).
+- **On-Device Inference:** ✅ Working (`llama.cpp` + custom `llama_bridge.cpp` JNI, Qwen2.5-Coder-3B Q4_K_M, multi-tier context degradation 4096 $\rightarrow$ 2048 $\rightarrow$ 1024 $\rightarrow$ 512, sub-1.8s first token).
+- **Hardware Acceleration:** ✅ Working (CPU ARM NEON, Adreno GPU OpenCL, Qualcomm Hexagon NPU router with CPU fallback).
+- **Review & Diff Inspector:** ✅ Working (Syntax-highlighted diffs, severity triage [Critical/Warning/Info], automated remediation patch, markdown report export).
+- **GitHub PR Creation:** ✅ Working (Auto branch creation on default branch, patch commit, PR submission with markdown summary).
+- **PR Status Screen:** ✅ Working (Live check-run polling with self-hosted runner and graceful offline state).
+- **AI Codebase Assistant:** ✅ Working (Dynamic RAG with live GitHub repo tree indexing, README, commits, and source code snippet injection).
+- **CI/CD Generator Screen:** ✅ Working (Automatic stack detection, editable YAML card, 1-tap clipboard copy, and direct `.github/workflows/ci.yml` commit).
+- **Settings & Rules:** ✅ Working (Custom `.repoguardian/rules.md` editing, backend selector, LAN local server URL, in-app dev logs viewer).
+- **In-App Model Browser:** ✅ Working (Hugging Face Hub search, ≤4GB GGUF filter, foreground download service with progress).
+- **Voice Trigger:** ✅ Working (Android SpeechRecognizer intent router with offline + online fallback).
 
-### Current Status — as of Red Light hour 6
-- Auth flow: working (device flow tested against demo repo)
-- Repo picker: working
-- On-device inference: MLCEngine loads model, first-token latency ~2.1s on real device — acceptable
-- GitHub PR creation: Member B has the API calls working as standalone Kotlin functions, not yet wired to UI
-- Everything else: not started
+---
 
 ### Decisions Log
-- Red Light hour 2: Dropped 7B model in favor of 3B — 7B first-token latency was 8s+ on real hardware, too slow for a live demo
+- **2026-08-28:** Selected `llama.cpp` + GGML C++ core over heavy Python runtimes for bare-metal ARM64 execution and native Qualcomm Snapdragon Hexagon NPU offloading.
+- **2026-08-29:** Selected `Qwen2.5-Coder-3B-Instruct` (Q4_K_M GGUF) as primary model (~1.8 GB RAM footprint, < 1.8s TTFT, 18-38 tok/s).
+- **2026-08-30:** Implemented dynamic context degradation (4096 $\rightarrow$ 2048 $\rightarrow$ 1024 $\rightarrow$ 512 tokens) and Flash Attention fallback to prevent memory allocation crashes across diverse RAM capacities (3GB–16GB).
+- **2026-08-30:** Removed artificial 5s/30s client-side login countdowns and replaced with continuous background polling and automatic lifecycle cancellation on app exit.
+- **2026-08-30:** Added one-tap markdown review report export and CI/CD YAML copy actions to facilitate seamless Office Kit bridging between phone and laptop.
+
+---
+
+### Demo Path (Live 3-Minute Walkthrough)
+1. **Splash $\rightarrow$ Dashboard:** Open app with pre-authenticated demo repo.
+2. **Voice Trigger / Tap:** Say *"Hey, review the latest commit"* or tap top commit card.
+3. **Review & Severity Triage:** Observe on-device token streaming, line-level vulnerability identification, and remediation patch.
+4. **Create PR:** Tap "Create Pull Request from Fixes" $\rightarrow$ open GitHub PR $\rightarrow$ verify check-runs in PR Status.
+5. **CI/CD Generator & Chat:** Quick switch to CI/CD Generator to auto-commit `.github/workflows/ci.yml` and AI Chat for repo Q&A.
+

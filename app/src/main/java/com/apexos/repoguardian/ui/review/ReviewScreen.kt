@@ -66,6 +66,37 @@ fun ReviewScreen(
                             IconButton(onClick = { navController.popBackStack() }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
+                        },
+                        actions = {
+                            val review = uiState.reviewResult
+                            if (review != null) {
+                                val clipboard = LocalClipboardManager.current
+                                val context = LocalContext.current
+                                IconButton(onClick = {
+                                    val reportText = buildString {
+                                        appendLine("## 🛡️ Repo Guardian Review Summary")
+                                        appendLine("**Commit:** `${uiState.sha.take(7)}`")
+                                        appendLine("**Summary:** ${review.summary}")
+                                        if (review.issues.isNotEmpty()) {
+                                            appendLine("\n### Issues Detected (${review.issues.size}):")
+                                            review.issues.forEach { issue ->
+                                                val loc = if (issue.file != null) "${issue.file}${if (issue.line != null) ":${issue.line}" else ""}" else "Global"
+                                                appendLine("- **[${issue.severityEnum.uiLabel}]** $loc — ${issue.displayTitle}")
+                                            }
+                                        }
+                                        if (!review.fixedCode.isNullOrBlank()) {
+                                            appendLine("\n### Proposed Remediation Fix:")
+                                            appendLine("```")
+                                            appendLine(review.fixedCode)
+                                            appendLine("```")
+                                        }
+                                    }
+                                    clipboard.setText(AnnotatedString(reportText))
+                                    Toast.makeText(context, "Review report copied to clipboard", Toast.LENGTH_SHORT).show()
+                                }) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy Review Report", tint = BrandEmeraldLight)
+                                }
+                            }
                         }
                     )
                     HorizontalDivider(color = BrandBorder, thickness = 1.dp)

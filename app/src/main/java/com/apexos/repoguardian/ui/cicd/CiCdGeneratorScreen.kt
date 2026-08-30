@@ -21,6 +21,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.apexos.repoguardian.ui.theme.*
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CiCdGeneratorScreen(
@@ -28,6 +34,7 @@ fun CiCdGeneratorScreen(
     viewModel: CiCdGeneratorViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
 
     Scaffold(
         containerColor = BrandBackground,
@@ -50,6 +57,18 @@ fun CiCdGeneratorScreen(
                             }
                         },
                         actions = {
+                            if (uiState.generatedYaml.isNotBlank()) {
+                                IconButton(
+                                    onClick = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                        val clip = ClipData.newPlainText("CI/CD Workflow YAML", uiState.generatedYaml)
+                                        clipboard?.setPrimaryClip(clip)
+                                        Toast.makeText(context, "Workflow YAML copied to clipboard", Toast.LENGTH_SHORT).show()
+                                    }
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy YAML", tint = BrandEmeraldLight)
+                                }
+                            }
                             IconButton(
                                 onClick = { viewModel.regenerate() },
                                 enabled = !uiState.isGenerating
