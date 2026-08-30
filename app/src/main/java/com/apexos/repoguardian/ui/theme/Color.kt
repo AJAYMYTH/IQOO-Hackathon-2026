@@ -6,15 +6,15 @@ import androidx.compose.ui.graphics.Color
 // Minimal · Technical · Premium · Professional · Clean
 
 // ─── Surface & Background Hierarchy ──────────────────────────────────────────
-val BrandBackground        = Color(0xFF0B0B0C)   // Canvas / Background #0B0B0C
-val BrandSurface           = Color(0xFF121214)   // Primary Surface / Cards #121214
-val BrandSurfaceHigh       = Color(0xFF151518)   // Mid Surface #151518
-val BrandSurfaceElev       = Color(0xFF18181B)   // Elevated Surface #18181B
-val BrandBorder            = Color(0xFF27272A)   // Subtle Hairline Border #27272A
-val BrandBorderHighlight   = Color(0xFF3F3F46)   // Active focus / selected border #3F3F46
+val BrandBackground        = Color(0xFF000000)   // Complete Pitch Black #000000
+val BrandSurface           = Color(0xFF0D0D0F)   // Primary Surface / Cards #0D0D0F
+val BrandSurfaceHigh       = Color(0xFF141417)   // Mid Surface #141417
+val BrandSurfaceElev       = Color(0xFF18181C)   // Elevated Surface / Floating Nav #18181C
+val BrandBorder            = Color(0xFF222226)   // Thin Clean Minimal Hairline Border #222226
+val BrandBorderHighlight   = Color(0xFF38383E)   // Active focus / selected border #38383E
 
 // ─── Typography & Content Neutral Tokens ─────────────────────────────────────
-val BrandOnBg              = Color(0xFFF4F4F5)   // Primary Text #F4F4F5
+val BrandOnBg              = Color(0xFFFFFFFF)   // Complete White #FFFFFF for Fonts & Primary Icons
 val BrandOnBgMuted         = Color(0xFFA1A1AA)   // Secondary Text #A1A1AA
 val BrandGreige            = Color(0xFF71717A)   // Muted Text #71717A
 val BrandOnBgSubtle        = Color(0xFF52525B)   // Inactive tab icons, subtle placeholders #52525B

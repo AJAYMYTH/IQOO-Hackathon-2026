@@ -58,19 +58,19 @@ fun AppBottomBar(
             .padding(start = 20.dp, end = 20.dp, bottom = 12.dp, top = 4.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
-        // Floating Pill-Shaped Container
+        // Sleek Minimalist Floating Pill Navbar
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(62.dp),
-            shape = RoundedCornerShape(20.dp),
+                .height(60.dp),
+            shape = RoundedCornerShape(22.dp),
             color = BrandSurfaceElev,
             border = BorderStroke(1.dp, BrandBorder)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -78,13 +78,13 @@ fun AppBottomBar(
                     val isSelected = currentRoute == tab.route
 
                     val iconTint by animateColorAsState(
-                        targetValue = if (isSelected) BrandEmerald else BrandOnBgMuted,
+                        targetValue = if (isSelected) Color.White else BrandGreige,
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         label = "tab_icon_tint"
                     )
 
                     val textColor by animateColorAsState(
-                        targetValue = if (isSelected) BrandOnBg else BrandGreige,
+                        targetValue = if (isSelected) Color.White else BrandGreige,
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         label = "tab_text_color"
                     )
@@ -107,9 +107,9 @@ fun AppBottomBar(
                         modifier = Modifier
                             .weight(1f)
                             .height(48.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(activeBgColor)
-                            .border(1.dp, activeBorderColor, RoundedCornerShape(14.dp))
+                            .border(1.dp, activeBorderColor, RoundedCornerShape(16.dp))
                             .clickable(
                                 interactionSource = interactionSource,
                                 indication = null
@@ -136,7 +136,7 @@ fun AppBottomBar(
                                 tint = iconTint,
                                 modifier = Modifier.size(20.dp)
                             )
-                            Spacer(Modifier.height(3.dp))
+                            Spacer(Modifier.height(2.dp))
                             Text(
                                 text = tab.label,
                                 style = MaterialTheme.typography.labelSmall.copy(

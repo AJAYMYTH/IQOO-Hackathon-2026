@@ -243,7 +243,7 @@ fun ModelBrowserScreen(
                             text = {
                                 Text(
                                     "Featured",
-                                    color = if (uiState.selectedTab == 0) BrandEmeraldLight else BrandOnBgMuted,
+                                    color = if (uiState.selectedTab == 0) Color.White else BrandOnBgMuted,
                                     fontWeight = if (uiState.selectedTab == 0) FontWeight.Bold else FontWeight.Normal
                                 )
                             }
@@ -254,7 +254,7 @@ fun ModelBrowserScreen(
                             text = {
                                 Text(
                                     "Search HF",
-                                    color = if (uiState.selectedTab == 1) BrandEmeraldLight else BrandOnBgMuted,
+                                    color = if (uiState.selectedTab == 1) Color.White else BrandOnBgMuted,
                                     fontWeight = if (uiState.selectedTab == 1) FontWeight.Bold else FontWeight.Normal
                                 )
                             }
@@ -265,7 +265,7 @@ fun ModelBrowserScreen(
                             text = {
                                 Text(
                                     "Downloaded (${uiState.downloadedModels.size})",
-                                    color = if (uiState.selectedTab == 2) BrandEmeraldLight else BrandOnBgMuted,
+                                    color = if (uiState.selectedTab == 2) Color.White else BrandOnBgMuted,
                                     fontWeight = if (uiState.selectedTab == 2) FontWeight.Bold else FontWeight.Normal
                                 )
                             }
