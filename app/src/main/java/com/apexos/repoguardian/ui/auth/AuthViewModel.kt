@@ -2,9 +2,9 @@ package com.apexos.repoguardian.ui.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.apexos.repoguardian.core.logging.AppLogger
 import com.apexos.repoguardian.data.github.AuthState
 import com.apexos.repoguardian.data.github.GitHubAuthManager
-import com.apexos.repoguardian.data.github.models.DeviceCodeResponse
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -19,32 +19,62 @@ class AuthViewModel @Inject constructor(
     private val authManager: GitHubAuthManager
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "AuthViewModel"
+    }
+
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
     val authState: StateFlow<AuthState> = _authState
 
     private var flowJob: Job? = null
 
     fun startAuth() {
-        flowJob?.cancel()
+        cancelAuth()
         flowJob = viewModelScope.launch {
             _authState.value = AuthState.Idle
             try {
+                AppLogger.i(TAG, "Requesting GitHub device code...")
                 val deviceCodeResponse = authManager.requestDeviceCode()
+                AppLogger.i(TAG, "Device code received: ${deviceCodeResponse.userCode}. Starting polling without artificial timeouts.")
 
-                // Phase 1: 5-Second Transition Countdown on Auth Code Screen
-                for (countdown in 5 downTo 1) {
-                    if (!isActive) return@launch
-                    _authState.value = AuthState.WaitingForUser(
-                        response = deviceCodeResponse,
-                        transitionCountdown = countdown
-                    )
-                    delay(1000L)
+                _authState.value = AuthState.WaitingForUser(response = deviceCodeResponse)
+
+                val intervalMs = (deviceCodeResponse.interval.coerceAtLeast(5) * 1000).toLong()
+                val expiresInSeconds = deviceCodeResponse.expiresIn.coerceAtLeast(300)
+                val expiryTimeMs = System.currentTimeMillis() + (expiresInSeconds * 1000L)
+
+                while (isActive && System.currentTimeMillis() < expiryTimeMs) {
+                    delay(intervalMs)
+                    if (!isActive) break
+
+                    try {
+                        val token = authManager.pollToken(deviceCodeResponse.deviceCode)
+                        if (token != null) {
+                            AppLogger.i(TAG, "GitHub authorization successful! Token saved.")
+                            _authState.value = AuthState.Success(token)
+                            return@launch
+                        }
+                    } catch (e: Exception) {
+                        AppLogger.w(TAG, "GitHub polling exception: ${e.message}")
+                        if (isActive) {
+                            _authState.value = AuthState.Timeout(
+                                message = e.message ?: "Authorization session expired. Please try again.",
+                                expiredCode = deviceCodeResponse.userCode
+                            )
+                        }
+                        return@launch
+                    }
                 }
 
-                // Phase 2: Automatically transition to 30-Second Verification Screen
-                proceedToVerification(deviceCodeResponse)
-
+                if (isActive) {
+                    AppLogger.w(TAG, "GitHub device code expired after ${expiresInSeconds}s.")
+                    _authState.value = AuthState.Timeout(
+                        message = "GitHub authorization code expired. Please generate a new code.",
+                        expiredCode = deviceCodeResponse.userCode
+                    )
+                }
             } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to start GitHub authorization", e)
                 if (isActive) {
                     _authState.value = AuthState.Error(e.message ?: "Failed to start GitHub authorization")
                 }
@@ -52,64 +82,16 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    fun proceedToVerificationEarly() {
-        val currentState = _authState.value
-        if (currentState is AuthState.WaitingForUser) {
+    fun cancelAuth() {
+        if (flowJob?.isActive == true) {
+            AppLogger.i(TAG, "Stopping GitHub authorization process (user exited or cancelled).")
             flowJob?.cancel()
-            flowJob = viewModelScope.launch {
-                proceedToVerification(currentState.response)
-            }
+            flowJob = null
         }
-    }
-
-    private suspend fun proceedToVerification(deviceCodeResponse: DeviceCodeResponse) {
-        var remainingSeconds = 30
-        _authState.value = AuthState.Verifying(
-            response = deviceCodeResponse,
-            remainingSeconds = remainingSeconds
-        )
-
-        val intervalMs = (deviceCodeResponse.interval.coerceAtLeast(5) * 1000).toLong()
-        var lastPollTime = 0L
-
-        while (remainingSeconds > 0) {
-            val now = System.currentTimeMillis()
-            if (now - lastPollTime >= intervalMs) {
-                lastPollTime = now
-                try {
-                    val token = authManager.pollToken(deviceCodeResponse.deviceCode)
-                    if (token != null) {
-                        _authState.value = AuthState.Success(token)
-                        return
-                    }
-                } catch (e: Exception) {
-                    _authState.value = AuthState.Timeout(
-                        message = e.message ?: "Verification timed out. Please try again.",
-                        expiredCode = deviceCodeResponse.userCode
-                    )
-                    return
-                }
-            }
-
-            delay(1000L)
-            remainingSeconds -= 1
-            if (remainingSeconds > 0) {
-                _authState.value = AuthState.Verifying(
-                    response = deviceCodeResponse,
-                    remainingSeconds = remainingSeconds
-                )
-            }
-        }
-
-        // 30 seconds expired without authorization
-        _authState.value = AuthState.Timeout(
-            message = "Verification timed out. Please try again.",
-            expiredCode = deviceCodeResponse.userCode
-        )
     }
 
     override fun onCleared() {
         super.onCleared()
-        flowJob?.cancel()
+        cancelAuth()
     }
 }

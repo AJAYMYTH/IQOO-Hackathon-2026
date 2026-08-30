@@ -14,16 +14,14 @@ import javax.inject.Singleton
 sealed class AuthState {
     data object Idle : AuthState()
     data class WaitingForUser(
-        val response: DeviceCodeResponse,
-        val transitionCountdown: Int = 5
+        val response: DeviceCodeResponse
     ) : AuthState()
     data class Verifying(
-        val response: DeviceCodeResponse,
-        val remainingSeconds: Int = 30
+        val response: DeviceCodeResponse
     ) : AuthState()
     data class Success(val token: String) : AuthState()
     data class Timeout(
-        val message: String = "Verification timed out. Please try again.",
+        val message: String = "Authorization session expired. Please try again.",
         val expiredCode: String? = null
     ) : AuthState()
     data class Error(val message: String) : AuthState()
