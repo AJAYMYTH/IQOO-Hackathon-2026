@@ -278,29 +278,14 @@ fun SettingsScreen(
                             actionIconContentColor = BrandOnBgMuted
                         ),
                         title = {
-                            Text("Settings & Engine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("Settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         },
                         navigationIcon = {
                             IconButton(onClick = { navController.popBackStack() }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
                         },
-                        actions = {
-                            TextButton(
-                                onClick = { viewModel.saveSettings() },
-                                enabled = !uiState.isSaving
-                            ) {
-                                if (uiState.isSaving) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        strokeWidth = 2.dp,
-                                        color = BrandEmerald
-                                    )
-                                } else {
-                                    Text("Save", fontWeight = FontWeight.Bold, color = BrandEmeraldLight)
-                                }
-                            }
-                        }
+
                     )
                     HorizontalDivider(color = BrandBorder, thickness = 1.dp)
                 }
@@ -870,80 +855,36 @@ fun BackendCard(
             .fillMaxWidth()
             .clickable { onSelect() },
         shape = RoundedCornerShape(12.dp),
-        color = BrandSurface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+        color = if (isSelected) BrandSurfaceElev else BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isSelected) BrandEmerald.copy(alpha = 0.5f) else BrandBorder
+        )
     ) {
-        Column(
+        Row(
             modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            RadioButton(
+                selected = isSelected,
+                onClick = { onSelect() },
+                colors = RadioButtonDefaults.colors(
+                    selectedColor = BrandEmerald,
+                    unselectedColor = BrandOnBgSubtle
+                )
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = option.name,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = BrandOnBg
                 )
-                RadioButton(
-                    selected = isSelected,
-                    onClick = { onSelect() },
-                    colors = RadioButtonDefaults.colors(
-                        selectedColor = BrandEmerald,
-                        unselectedColor = BrandOnBgSubtle
-                    )
-                )
-            }
-
-            Text(
-                text = option.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = BrandOnBgMuted
-            )
-
-            // Pros
-            Text(
-                text = "Advantages:",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = StatusPass
-            )
-            option.pros.forEach { pro ->
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "+ $pro",
+                    text = option.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = BrandOnBgMuted
-                )
-            }
-
-            // Cons
-            Text(
-                text = "Trade-offs:",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = StatusFail
-            )
-            option.cons.forEach { con ->
-                Text(
-                    text = "- $con",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = BrandOnBgMuted
-                )
-            }
-
-            // Recommendation
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = BrandSurfaceHigh,
-                border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
-            ) {
-                Text(
-                    text = "Recommendation: ${option.recommended}",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(8.dp),
                     color = BrandOnBgMuted
                 )
             }

@@ -301,9 +301,6 @@ fun ChatScreen(
                             }
                         },
                         actions = {
-                            IconButton(onClick = { showGuide = true }) {
-                                Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = "Help Guide")
-                            }
                             IconButton(onClick = { viewModel.clearChat() }) {
                                 Icon(Icons.Default.DeleteOutline, contentDescription = "Clear Conversation")
                             }
@@ -364,10 +361,18 @@ fun ChatScreen(
                                     )
                                     Spacer(modifier = Modifier.width(5.dp))
                                     Text(
-                                        text = if (uiState.isThinkModeEnabled) "Deep Think" else "Think",
+                                        text = "Think",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.SemiBold,
                                         color = if (uiState.isThinkModeEnabled) BrandEmeraldLight else BrandOnBgMuted
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    // ON/OFF dot indicator
+                                    Box(
+                                        modifier = androidx.compose.ui.Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(if (uiState.isThinkModeEnabled) BrandEmeraldLight else BrandOnBgSubtle)
                                     )
                                 }
                             }

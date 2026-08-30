@@ -92,8 +92,8 @@ fun AuthScreen(
                 Surface(
                     modifier = Modifier.size(44.dp),
                     shape = RoundedCornerShape(12.dp),
-                    color = Color.Black,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmeraldLight.copy(alpha = 0.4f))
+                    color = BrandBackground,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.app_logo_black),

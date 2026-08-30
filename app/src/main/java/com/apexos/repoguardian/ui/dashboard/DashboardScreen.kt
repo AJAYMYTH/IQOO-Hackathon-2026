@@ -231,27 +231,7 @@ fun DashboardScreen(
                 navController = navController
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                shape = CircleShape,
-                containerColor = when (voiceState) {
-                    is VoiceState.Listening -> StatusFail
-                    else -> BrandEmerald
-                },
-                contentColor = OnEmerald,
-                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
-                modifier = Modifier.padding(bottom = 8.dp)
-            ) {
-                Icon(
-                    imageVector = when (voiceState) {
-                        is VoiceState.Listening -> Icons.Default.MicOff
-                        else -> Icons.Default.Mic
-                    },
-                    contentDescription = "Voice Trigger"
-                )
-            }
-        }
+
     ) { padding ->
         Column(
             modifier = Modifier
@@ -389,7 +369,7 @@ fun DashboardScreen(
                             }
 
                             item {
-                                Spacer(modifier = Modifier.height(60.dp))
+                                Spacer(modifier = Modifier.height(16.dp))
                             }
                         }
                     }
@@ -457,20 +437,7 @@ private fun RepoSummaryCard(
                     }
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = BrandSurfaceElev,
-                    modifier = Modifier.clickable { onBrowseClick() }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = BrandEmeraldLight, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Switch", style = MaterialTheme.typography.labelSmall, color = BrandEmeraldLight, fontWeight = FontWeight.Medium)
-                    }
-                }
+
             }
         }
     }
@@ -551,11 +518,25 @@ fun CommitItem(commit: Commit, onClick: () -> Unit) {
                 }
             }
 
-            // Date
+            // Date — relative format
             commit.commit.author?.date?.let { date ->
                 Spacer(Modifier.height(4.dp))
+                val relDate = try {
+                    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+                    sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                    val parsed = sdf.parse(date)
+                    val diffMs = System.currentTimeMillis() - (parsed?.time ?: 0L)
+                    val diffDays = (diffMs / (1000 * 60 * 60 * 24)).toInt()
+                    when {
+                        diffDays == 0 -> "Today"
+                        diffDays == 1 -> "Yesterday"
+                        diffDays < 7 -> "$diffDays days ago"
+                        diffDays < 30 -> "${diffDays / 7}w ago"
+                        else -> date.take(10)
+                    }
+                } catch (e: Exception) { date.take(10) }
                 Text(
-                    text = date.take(10),
+                    text = relDate,
                     style = MaterialTheme.typography.labelSmall,
                     color = BrandOnBgSubtle
                 )

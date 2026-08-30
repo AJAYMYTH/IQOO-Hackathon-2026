@@ -52,8 +52,8 @@ val CodeDeletion           = Color(0x28FF5C7A)  // 16% red tint — removed line
 val CodeLineNumber         = BrandGreige        // Line numbers
 
 // ─── Glassmorphism / Frosted Tokens (used in bottom nav, overlays) ───────────
-val GlassBackground        = Color(0xF0161820)  // Frosted card surface
-val GlassBackgroundElev    = Color(0xF2252840)  // Frosted sheet
+val GlassBackground        = Color(0xE8161820)  // Frosted top-bar — 91% opaque, subtle translucency
+val GlassBackgroundElev    = Color(0xEC252840)  // Frosted sheet — slightly more opaque
 val GlassBorder            = Color(0x3A2A2D3E)  // Frosted hairline
 
 // ─── Backward Compatibility Aliases ──────────────────────────────────────────

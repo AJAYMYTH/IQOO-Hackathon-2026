@@ -60,7 +60,7 @@ fun ReviewScreen(
                             actionIconContentColor = BrandOnBg
                         ),
                         title = {
-                            Text("Code Review & Analysis", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("Review", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         },
                         navigationIcon = {
                             IconButton(onClick = { navController.popBackStack() }) {
