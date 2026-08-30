@@ -967,7 +967,7 @@ fun LlamaInfoCard() {
                 text = "1. Why llama.cpp for On-Device Inference?",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                color = BrandEmeraldLight
+                color = BrandOnBg
             )
             Text(
                 text = "llama.cpp is a pure C/C++ inference engine with zero heavy runtime dependencies. It supports ARM NEON SIMD, FP16/INT4 quantization (Q4_K_M, Q8_0), and enables 100% offline, privacy-first AI code reviews directly on mobile hardware without sending code to remote servers.",
@@ -979,7 +979,7 @@ fun LlamaInfoCard() {
                 text = "2. Snapdragon Hardware Acceleration",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                color = BrandEmeraldLight
+                color = BrandOnBg
             )
             Text(
                 text = "On the iQOO 15 (Snapdragon 8 Elite / Gen series), llama.cpp utilizes OpenCL GPU compute and Hexagon NPU matrix multiplication (HTP) for accelerated token generation and ultra-low latency.",
@@ -991,7 +991,7 @@ fun LlamaInfoCard() {
                 text = "3. Hugging Face GGUF Integration",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                color = BrandEmeraldLight
+                color = BrandOnBg
             )
             Text(
                 text = "Allows one-tap discovery, size-filtered downloading, and instant switching of mobile-optimized code models.",

@@ -62,15 +62,15 @@ fun AppBottomBar(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(60.dp),
-            shape = RoundedCornerShape(30.dp),
+                .height(62.dp),
+            shape = RoundedCornerShape(20.dp),
             color = BrandSurfaceElev,
             border = BorderStroke(1.dp, BrandBorder)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -78,25 +78,25 @@ fun AppBottomBar(
                     val isSelected = currentRoute == tab.route
 
                     val iconTint by animateColorAsState(
-                        targetValue = if (isSelected) BrandEmeraldLight else BrandOnBgSubtle,
+                        targetValue = if (isSelected) BrandEmerald else BrandOnBgMuted,
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         label = "tab_icon_tint"
                     )
 
                     val textColor by animateColorAsState(
-                        targetValue = if (isSelected) BrandEmeraldLight else BrandOnBgSubtle,
+                        targetValue = if (isSelected) BrandOnBg else BrandGreige,
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         label = "tab_text_color"
                     )
 
                     val activeBgColor by animateColorAsState(
-                        targetValue = if (isSelected) BrandEmerald.copy(alpha = 0.12f) else Color.Transparent,
+                        targetValue = if (isSelected) BrandSurfaceHigh else Color.Transparent,
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         label = "tab_active_bg"
                     )
 
                     val activeBorderColor by animateColorAsState(
-                        targetValue = if (isSelected) BrandEmeraldLight.copy(alpha = 0.25f) else Color.Transparent,
+                        targetValue = if (isSelected) BrandBorderHighlight else Color.Transparent,
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         label = "tab_active_border"
                     )
@@ -107,9 +107,9 @@ fun AppBottomBar(
                         modifier = Modifier
                             .weight(1f)
                             .height(48.dp)
-                            .clip(RoundedCornerShape(24.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .background(activeBgColor)
-                            .border(1.dp, activeBorderColor, RoundedCornerShape(24.dp))
+                            .border(1.dp, activeBorderColor, RoundedCornerShape(14.dp))
                             .clickable(
                                 interactionSource = interactionSource,
                                 indication = null
@@ -136,11 +136,11 @@ fun AppBottomBar(
                                 tint = iconTint,
                                 modifier = Modifier.size(20.dp)
                             )
-                            Spacer(Modifier.height(2.dp))
+                            Spacer(Modifier.height(3.dp))
                             Text(
                                 text = tab.label,
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.5.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                                 ),
                                 color = textColor,

@@ -6,9 +6,9 @@ import androidx.compose.ui.graphics.Color
 // Minimal · Technical · Premium · Professional · Clean
 
 // ─── Surface & Background Hierarchy ──────────────────────────────────────────
-val BrandBackground        = Color(0xFF0A0A0B)   // Canvas / Background #0A0A0B
-val BrandSurface           = Color(0xFF111113)   // Primary Surface #111113
-val BrandSurfaceHigh       = Color(0xFF141417)   // Mid Surface #141417
+val BrandBackground        = Color(0xFF0B0B0C)   // Canvas / Background #0B0B0C
+val BrandSurface           = Color(0xFF121214)   // Primary Surface / Cards #121214
+val BrandSurfaceHigh       = Color(0xFF151518)   // Mid Surface #151518
 val BrandSurfaceElev       = Color(0xFF18181B)   // Elevated Surface #18181B
 val BrandBorder            = Color(0xFF27272A)   // Subtle Hairline Border #27272A
 val BrandBorderHighlight   = Color(0xFF3F3F46)   // Active focus / selected border #3F3F46

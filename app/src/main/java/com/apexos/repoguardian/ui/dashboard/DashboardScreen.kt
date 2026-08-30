@@ -545,7 +545,7 @@ fun CommitItem(commit: Commit, onClick: () -> Unit) {
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp
                         ),
-                        color = BrandEmeraldLight,
+                        color = BrandOnBg,
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                     )
                 }

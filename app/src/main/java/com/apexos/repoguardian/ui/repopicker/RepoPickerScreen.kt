@@ -230,7 +230,7 @@ fun RepoItem(repo: Repo, onClick: () -> Unit) {
                     Text(
                         text = repo.language,
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                        color = BrandEmeraldLight,
+                        color = BrandOnBg,
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                     )
                 }

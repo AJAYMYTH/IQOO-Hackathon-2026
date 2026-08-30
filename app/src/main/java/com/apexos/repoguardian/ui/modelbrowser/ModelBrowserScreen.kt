@@ -488,7 +488,7 @@ private fun FeaturedModelCard(
                     ) {
                         Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(12.dp), tint = BrandOnBgSubtle)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(text = model.quant, style = MaterialTheme.typography.labelSmall, color = BrandEmeraldLight)
+                        Text(text = model.quant, style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = BrandOnBg)
                     }
                 }
             }
@@ -1181,12 +1181,13 @@ private fun ModelFileItem(
                         file.quantType?.let { quant ->
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
-                                color = BrandSurfaceElev
+                                color = BrandSurfaceElev,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
                             ) {
                                 Text(
                                     text = quant,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = BrandEmeraldLight,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                    color = BrandOnBg,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
