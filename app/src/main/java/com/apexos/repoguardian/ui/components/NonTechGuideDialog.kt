@@ -52,7 +52,7 @@ fun NonTechGuideDialog(
             title = "Select Repository",
             description = "Use the dropdown switcher at the top to select any project for security analysis, diff inspection, or CI/CD generation.",
             icon = Icons.Default.FolderOpen,
-            iconTint = Color(0xFF60A5FA)
+            iconTint = BrandEmeraldLight
         ),
         GuideStep(
             stepNumber = "3",
@@ -66,14 +66,14 @@ fun NonTechGuideDialog(
             title = "Activate Think Mode",
             description = "Enable Think Mode to inspect the AI's step-by-step chain-of-thought reasoning before viewing fixes.",
             icon = Icons.Default.Psychology,
-            iconTint = Color(0xFFA78BFA)
+            iconTint = BrandEmeraldLight
         ),
         GuideStep(
             stepNumber = "5",
             title = "Review & Auto-PR",
             description = "Inspect commits for bugs, explore diffs, and generate pull requests directly from AI suggestions in 1 tap.",
             icon = Icons.AutoMirrored.Filled.MenuBook,
-            iconTint = StatusPass
+            iconTint = BrandEmeraldLight
         )
     )
 
