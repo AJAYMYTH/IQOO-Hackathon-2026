@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.CallMerge
@@ -20,6 +22,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -28,9 +31,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.apexos.repoguardian.data.llm.CodeIssue
+import com.apexos.repoguardian.data.llm.IssueCategory
 import com.apexos.repoguardian.data.llm.ReviewResult
 import com.apexos.repoguardian.data.llm.Severity
 import com.apexos.repoguardian.navigation.Routes
@@ -45,6 +51,15 @@ fun ReviewScreen(
     viewModel: ReviewViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    // Show toast on commit success
+    LaunchedEffect(uiState.commitSuccessMessage) {
+        uiState.commitSuccessMessage?.let { msg ->
+            Toast.makeText(context, "✅ $msg", Toast.LENGTH_LONG).show()
+            viewModel.clearSuccessMessage()
+        }
+    }
 
     Scaffold(
         containerColor = BrandBackground,
@@ -72,17 +87,19 @@ fun ReviewScreen(
                             val review = uiState.reviewResult
                             if (review != null) {
                                 val clipboard = LocalClipboardManager.current
-                                val context = LocalContext.current
                                 IconButton(onClick = {
                                     val reportText = buildString {
-                                        appendLine("## 🛡️ Repo Guardian Review Summary")
+                                        appendLine("## 🛡️ Repo Guardian Code Review Summary")
                                         appendLine("**Commit:** `${uiState.sha.take(7)}`")
+                                        appendLine("**Repository:** ${uiState.owner}/${uiState.repo}")
                                         appendLine("**Summary:** ${review.summary}")
                                         if (review.issues.isNotEmpty()) {
                                             appendLine("\n### Issues Detected (${review.issues.size}):")
                                             review.issues.forEach { issue ->
                                                 val loc = if (issue.file != null) "${issue.file}${if (issue.line != null) ":${issue.line}" else ""}" else "Global"
-                                                appendLine("- **[${issue.severityEnum.uiLabel}]** $loc — ${issue.displayTitle}")
+                                                appendLine("- **[${issue.severityEnum.uiLabel}] [${issue.categoryEnum.uiLabel}]** $loc — ${issue.displayTitle}")
+                                                appendLine("  ${issue.description}")
+                                                issue.displayFix?.let { appendLine("  *Fix:* $it") }
                                             }
                                         }
                                         if (!review.fixedCode.isNullOrBlank()) {
@@ -231,7 +248,7 @@ fun ReviewScreen(
                         uiState.commitDiff?.files?.let { files ->
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "${files.size} file(s) changed",
+                                text = "${files.size} file(s) changed in this commit",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = BrandOnBgMuted
                             )
@@ -250,7 +267,7 @@ fun ReviewScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator(color = BrandEmerald)
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("Loading commit diff...", color = BrandOnBgMuted, style = MaterialTheme.typography.bodySmall)
+                            Text("Loading commit diff from GitHub...", color = BrandOnBgMuted, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -262,10 +279,10 @@ fun ReviewScreen(
                         modifier = Modifier.padding(bottom = 8.dp),
                         thinkingPhases = listOf(
                             "Analyzing diff hunks and syntax trees...",
+                            "Scanning for bugs, logic errors & merge conflicts...",
+                            "Auditing security vulnerabilities & credential leaks...",
                             "Classifying issue severities (Critical, Warning, Info)...",
-                            "Scanning for CVEs, logic flaws & memory leaks...",
-                            "Synthesizing production review & remediation steps...",
-                            "Finalizing on-device AI code audit..."
+                            "Synthesizing precision remediations & fixes..."
                         )
                     )
                 }
@@ -306,7 +323,21 @@ fun ReviewScreen(
                     }
                 } else {
                     items(filtered, key = { "${it.file}:${it.line}:${it.displayTitle}" }) { issue ->
-                        IssueCard(issue = issue)
+                        val isAiSolving = uiState.solvingIssueKey == "${issue.file}:${issue.line}:${issue.displayTitle}"
+                        val isGeneratingTest = uiState.testingIssueKey == "${issue.file}:${issue.line}:${issue.displayTitle}"
+                        IssueCard(
+                            issue = issue,
+                            isAiSolving = isAiSolving,
+                            isGeneratingTest = isGeneratingTest,
+                            onEditClick = { viewModel.startManualEdit(issue) },
+                            onAiSolveClick = { viewModel.solveIssueWithAi(issue) },
+                            onGenerateTestClick = { viewModel.generateVerificationTest(issue) },
+                            onTrustApplyClick = { viewModel.openTrustPreview(issue) },
+                            onApplySolutionClick = {
+                                viewModel.startManualEdit(issue)
+                                viewModel.applyAiFixToManualEditor(issue)
+                            }
+                        )
                     }
                 }
 
@@ -382,17 +413,86 @@ fun ReviewScreen(
             }
         }
     }
+
+    // ─── Trust Before Apply Preview Dialog ────────────────────────────────────────
+    if (uiState.previewingFixIssue != null) {
+        TrustBeforeApplyDialog(
+            issue = uiState.previewingFixIssue!!,
+            isSubmitting = uiState.isSubmittingCommit,
+            onDismiss = { viewModel.dismissTrustPreview() },
+            onApply = { isPrMode ->
+                viewModel.applyTrustPreview(uiState.previewingFixIssue!!, isPrMode)
+            }
+        )
+    }
+
+    // ─── Manual Code Editor Dialog ────────────────────────────────────────────────
+    if (uiState.editingIssue != null) {
+        ManualCodeEditorDialog(
+            issue = uiState.editingIssue!!,
+            filePath = uiState.editingFilePath,
+            content = uiState.editingContent,
+            commitMessage = uiState.editingCommitMessage,
+            isPrMode = uiState.isEditingPrMode,
+            isLoadingFile = uiState.isLoadingFileContent,
+            isSubmitting = uiState.isSubmittingCommit,
+            onContentChange = { viewModel.updateManualContent(it) },
+            onCommitMessageChange = { viewModel.updateCommitMessage(it) },
+            onPrModeChange = { viewModel.setEditingPrMode(it) },
+            onUseAiFix = { viewModel.applyAiFixToManualEditor(uiState.editingIssue!!) },
+            onDismiss = { viewModel.dismissManualEdit() },
+            onCommit = { viewModel.commitManualEdit() }
+        )
+    }
 }
 
 // ─── Review Summary Card ───────────────────────────────────────────────────────
 @Composable
 fun ReviewSummaryCard(review: ReviewResult) {
+    val risk = review.computedRiskScore
+    val riskBadgeColor = Color(risk.riskLevel.badgeColorHex)
+
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = BrandSurface,
         border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            // Privacy Mode Guarantee Banner
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = BrandEmeraldMuted.copy(alpha = 0.15f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmeraldLight.copy(alpha = 0.3f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(BrandEmeraldLight)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "0 BYTES CLOUD UPLOAD",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp),
+                        color = BrandEmeraldLight
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "• Private On-Device Neural Engine",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = BrandOnBgMuted
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Header: Status Icon + Review Status + Severity Pills
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -403,15 +503,22 @@ fun ReviewSummaryCard(review: ReviewResult) {
                         imageVector = if (review.hasIssue) Icons.Default.Shield else Icons.Default.CheckCircle,
                         contentDescription = null,
                         tint = if (review.criticalCount > 0) SeverityCritical else if (review.hasIssue) SeverityWarning else StatusPass,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (review.hasIssue) "Review Complete" else "No Issues Detected",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = BrandOnBg
-                    )
+                    Column {
+                        Text(
+                            text = if (review.hasIssue) "Review Complete" else "No Issues Detected",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = BrandOnBg
+                        )
+                        Text(
+                            text = "${review.totalCount} issues identified across diff",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = BrandOnBgMuted
+                        )
+                    }
                 }
 
                 // Severity Counts Pill
@@ -464,7 +571,55 @@ fun ReviewSummaryCard(review: ReviewResult) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ─── Commit Health & Risk Score Gauge ──────────────────────────────
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = BrandSurfaceHigh,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "COMMIT HEALTH",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp),
+                                color = BrandOnBgMuted
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = riskBadgeColor.copy(alpha = 0.18f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, riskBadgeColor.copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                text = "${risk.overallScore}/100 • ${risk.riskLabel}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = riskBadgeColor,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    // 4 Pillar Progress Bars (Security, Reliability, Performance, Maintainability)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ScoreBar(label = "Security", score = risk.securityScore, color = if (risk.securityScore >= 80) StatusPass else SeverityCritical)
+                        ScoreBar(label = "Reliability", score = risk.reliabilityScore, color = if (risk.reliabilityScore >= 80) StatusPass else SeverityWarning)
+                        ScoreBar(label = "Performance", score = risk.performanceScore, color = BrandEmeraldLight)
+                        ScoreBar(label = "Maintainability", score = risk.maintainabilityScore, color = BrandGreige)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             Text(
                 text = review.summary,
@@ -494,6 +649,37 @@ fun ReviewSummaryCard(review: ReviewResult) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ScoreBar(label: String, score: Int, color: Color) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = BrandOnBgMuted,
+            modifier = Modifier.width(95.dp)
+        )
+        LinearProgressIndicator(
+            progress = { score / 100f },
+            modifier = Modifier
+                .weight(1f)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
+            color = color,
+            trackColor = BrandSurfaceElev
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = "$score",
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+            color = BrandOnBg,
+            modifier = Modifier.width(26.dp)
+        )
     }
 }
 
@@ -585,10 +771,18 @@ fun SeverityFilterRow(
 
 // ─── Issue Card Component ──────────────────────────────────────────────────────
 @Composable
-fun IssueCard(issue: CodeIssue) {
+fun IssueCard(
+    issue: CodeIssue,
+    isAiSolving: Boolean = false,
+    isGeneratingTest: Boolean = false,
+    onEditClick: () -> Unit = {},
+    onAiSolveClick: () -> Unit = {},
+    onGenerateTestClick: () -> Unit = {},
+    onTrustApplyClick: () -> Unit = {},
+    onApplySolutionClick: () -> Unit = {}
+) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
-    var isExpanded by remember { mutableStateOf(true) }
 
     val (badgeBg, badgeText, badgeIcon) = when (issue.severityEnum) {
         Severity.CRITICAL -> Triple(SeverityCritical.copy(alpha = 0.15f), SeverityCritical, Icons.Default.Error)
@@ -596,20 +790,40 @@ fun IssueCard(issue: CodeIssue) {
         Severity.INFO, Severity.UNKNOWN -> Triple(BrandSurfaceHigh, BrandOnBgMuted, Icons.Default.Info)
     }
 
+    val (catBg, catText, catIcon) = when (issue.categoryEnum) {
+        IssueCategory.SECURITY -> Triple(SeverityCritical.copy(alpha = 0.12f), SeverityCritical, Icons.Default.Security)
+        IssueCategory.BUG -> Triple(SeverityCritical.copy(alpha = 0.12f), SeverityCritical, Icons.Default.BugReport)
+        IssueCategory.CONFLICT -> Triple(SeverityWarning.copy(alpha = 0.15f), SeverityWarning, Icons.AutoMirrored.Filled.CallMerge)
+        IssueCategory.SYNTAX_ERROR -> Triple(SeverityWarning.copy(alpha = 0.15f), SeverityWarning, Icons.Default.Code)
+        IssueCategory.LOGIC_ERROR -> Triple(SeverityWarning.copy(alpha = 0.15f), SeverityWarning, Icons.Default.Psychology)
+        IssueCategory.PERFORMANCE -> Triple(BrandEmeraldMuted, BrandEmeraldLight, Icons.Default.Speed)
+        IssueCategory.MAINTAINABILITY -> Triple(BrandSurfaceHigh, BrandOnBgMuted, Icons.Default.Build)
+        IssueCategory.STYLE -> Triple(BrandSurfaceHigh, BrandGreige, Icons.Default.Palette)
+        IssueCategory.TESTING -> Triple(BrandSurfaceHigh, StatusPass, Icons.Default.CheckCircleOutline)
+        IssueCategory.UNKNOWN -> Triple(BrandSurfaceHigh, BrandOnBgMuted, Icons.Default.Info)
+    }
+
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = BrandSurface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (issue.isFixed) StatusPass.copy(alpha = 0.6f) else BrandBorder
+        ),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Header Row: Severity Badge + Category + Location + Verification Alert
+            // Header Row: Severity Badge + Category Badge + Confidence / Verification Alert
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    // Severity Badge
                     Surface(
                         shape = RoundedCornerShape(6.dp),
                         color = badgeBg,
@@ -621,7 +835,7 @@ fun IssueCard(issue: CodeIssue) {
                         ) {
                             Icon(
                                 imageVector = badgeIcon,
-                                contentDescription = "${issue.severityEnum.uiLabel} issue",
+                                contentDescription = null,
                                 tint = badgeText,
                                 modifier = Modifier.size(13.dp)
                             )
@@ -635,18 +849,46 @@ fun IssueCard(issue: CodeIssue) {
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
-
+                    // Category Badge
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = BrandSurfaceHigh
+                        color = catBg,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, catText.copy(alpha = 0.25f))
                     ) {
-                        Text(
-                            text = issue.categoryEnum.uiLabel,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = BrandOnBgMuted,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                        ) {
+                            Icon(
+                                imageVector = catIcon,
+                                contentDescription = null,
+                                tint = catText,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = issue.categoryEnum.uiLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = catText
+                            )
+                        }
+                    }
+
+                    if (issue.isFixed) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = StatusPass.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, StatusPass.copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                text = "FIXED",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = StatusPass,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
 
@@ -658,7 +900,7 @@ fun IssueCard(issue: CodeIssue) {
                         border = androidx.compose.foundation.BorderStroke(1.dp, SeverityWarning.copy(alpha = 0.4f))
                     ) {
                         Text(
-                            text = "Needs manual verification",
+                            text = "Needs verification",
                             style = MaterialTheme.typography.labelSmall,
                             color = SeverityWarning,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -700,7 +942,7 @@ fun IssueCard(issue: CodeIssue) {
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp
                         ),
-                        color = BrandOnBgMuted
+                        color = BrandEmeraldLight
                     )
                 }
             }
@@ -723,24 +965,45 @@ fun IssueCard(issue: CodeIssue) {
                     border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorderHighlight)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Lightbulb,
-                                contentDescription = null,
-                                modifier = Modifier.size(15.dp),
-                                tint = BrandEmeraldLight
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Remediation / Fix",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = BrandEmeraldLight
-                            )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Lightbulb,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(15.dp),
+                                    tint = BrandEmeraldLight
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Remediation / Fix",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = BrandEmeraldLight
+                                )
+                            }
+
+                            if (issue.aiSolution != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = BrandEmerald.copy(alpha = 0.2f)
+                                ) {
+                                    Text(
+                                        text = "AI Solved ✨",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = BrandEmeraldLight,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                         }
                         Spacer(modifier = Modifier.height(6.dp))
-                        if (fix.contains("\n") || fix.contains("```") || fix.contains("(") || fix.contains("fun ") || fix.contains("val ") || fix.contains("var ")) {
-                            val cleanCode = fix.removePrefix("```kotlin").removePrefix("```").removeSuffix("```").trim()
+                        if (fix.contains("\n") || fix.contains("```") || fix.contains("(") || fix.contains("fun ") || fix.contains("val ") || fix.contains("export ") || fix.contains("const ")) {
+                            val cleanCode = fix.removePrefix("```kotlin").removePrefix("```typescript").removePrefix("```").removeSuffix("```").trim()
                             val lang = issue.file?.substringAfterLast('.', "") ?: "kotlin"
                             CodeSnippetView(
                                 code = cleanCode,
@@ -762,27 +1025,509 @@ fun IssueCard(issue: CodeIssue) {
                 }
             }
 
-            // Action bar: Copy & Expand
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(
-                    onClick = {
-                        val textToCopy = buildString {
-                            appendLine("[${issue.severityEnum.uiLabel.uppercase()}] ${issue.displayTitle}")
-                            if (issue.file != null) appendLine("File: ${issue.file}${if (issue.line != null) ":${issue.line}" else ""}")
-                            appendLine(issue.description)
-                            issue.displayFix?.let { appendLine("Fix: $it") }
-                        }
-                        clipboardManager.setText(AnnotatedString(textToCopy))
-                        Toast.makeText(context, "Issue copied to clipboard", Toast.LENGTH_SHORT).show()
-                    }
+            // Automated Verification Test Section (if generated)
+            issue.verificationTest?.let { testSnippet ->
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = BrandSurfaceElev,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StatusPass.copy(alpha = 0.35f))
                 ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = BrandOnBgMuted, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Copy", style = MaterialTheme.typography.labelSmall, color = BrandOnBgMuted)
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusPass, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "🧪 Automated Verification Test (Regression Prevention)",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = StatusPass
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        val cleanTest = testSnippet.removePrefix("```kotlin").removePrefix("```typescript").removePrefix("```").removeSuffix("```").trim()
+                        CodeSnippetView(
+                            code = cleanTest,
+                            language = issue.file?.substringAfterLast('.', "kt") ?: "kt",
+                            onCopy = {
+                                clipboardManager.setText(AnnotatedString(it))
+                                Toast.makeText(context, "Test code copied", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Action Bar: Edit & Commit, Ask AI to Solve, Verify Test, Trust & Apply
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = BrandBorder.copy(alpha = 0.5f))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Option 1: Manually Edit and Commit
+                    FilledTonalButton(
+                        onClick = onEditClick,
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = BrandSurfaceHigh,
+                            contentColor = BrandEmeraldLight
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.weight(1f).height(34.dp)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Edit & Commit", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    // Option 2: Ask AI to Solve That
+                    Button(
+                        onClick = onAiSolveClick,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (issue.aiSolution != null) BrandSurfaceHigh else BrandEmeraldMuted,
+                            contentColor = BrandEmeraldLight
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.weight(1f).height(34.dp),
+                        enabled = !isAiSolving
+                    ) {
+                        if (isAiSolving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(12.dp),
+                                strokeWidth = 1.5.dp,
+                                color = BrandEmeraldLight
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("Solving...", style = MaterialTheme.typography.labelSmall)
+                        } else {
+                            Icon(
+                                if (issue.aiSolution != null) Icons.Default.AutoFixHigh else Icons.Default.Psychology,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                if (issue.aiSolution != null) "Re-solve AI" else "Ask AI to Solve",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+
+                // Row 2: Verify (Gen Test) & Trust & Apply
+                if (issue.displayFix != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Generate Test button
+                        OutlinedButton(
+                            onClick = onGenerateTestClick,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.weight(1f).height(34.dp),
+                            enabled = !isGeneratingTest,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, StatusPass.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusPass)
+                        ) {
+                            if (isGeneratingTest) {
+                                CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp, color = StatusPass)
+                                Spacer(Modifier.width(4.dp))
+                                Text("Testing...", style = MaterialTheme.typography.labelSmall)
+                            } else {
+                                Icon(Icons.Default.Science, contentDescription = null, modifier = Modifier.size(13.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(if (issue.verificationTest != null) "Re-gen Test" else "Verify (Gen Test)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+
+                        // Trust & Apply button
+                        Button(
+                            onClick = onTrustApplyClick,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.weight(1f).height(34.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald, contentColor = OnEmerald)
+                        ) {
+                            Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Trust & Apply", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Trust Before Apply Dialog ─────────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TrustBeforeApplyDialog(
+    issue: CodeIssue,
+    isSubmitting: Boolean,
+    onDismiss: () -> Unit,
+    onApply: (isPrMode: Boolean) -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = BrandSurface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder),
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.90f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(18.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = BrandEmeraldLight, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Trust Before Apply", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = BrandOnBg)
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = BrandOnBgMuted)
+                    }
+                }
+
+                Text(
+                    text = "AI-assisted autonomy with human-in-the-loop validation.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = BrandOnBgMuted
+                )
+
+                Spacer(Modifier.height(14.dp))
+
+                // Issue summary box
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = BrandSurfaceHigh,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(text = issue.displayTitle, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = BrandOnBg)
+                        if (issue.file != null) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(text = "Target: ${issue.file}${if (issue.line != null) ":${issue.line}" else ""}", style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = BrandEmeraldLight)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                // Proposed Remediation Snippet
+                Text("Proposed Fix:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = BrandOnBg)
+                Spacer(Modifier.height(6.dp))
+                val solution = issue.aiSolution ?: issue.displayFix ?: ""
+                val cleanCode = solution.removePrefix("```kotlin").removePrefix("```typescript").removePrefix("```").removeSuffix("```").trim()
+                CodeSnippetView(
+                    code = cleanCode,
+                    language = issue.file?.substringAfterLast('.', "kt") ?: "kt",
+                    onCopy = {}
+                )
+
+                // Automated Verification Test
+                if (issue.verificationTest != null) {
+                    Spacer(Modifier.height(14.dp))
+                    Text("Automated Verification Test:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = StatusPass)
+                    Spacer(Modifier.height(6.dp))
+                    val cleanTest = issue.verificationTest.removePrefix("```kotlin").removePrefix("```typescript").removePrefix("```").removeSuffix("```").trim()
+                    CodeSnippetView(
+                        code = cleanTest,
+                        language = issue.file?.substringAfterLast('.', "kt") ?: "kt",
+                        onCopy = {}
+                    )
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // Actions: Create PR or Direct Commit
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = { onApply(true) },
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
+                        shape = RoundedCornerShape(10.dp),
+                        enabled = !isSubmitting
+                    ) {
+                        if (isSubmitting) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = OnEmerald)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Processing...", color = OnEmerald)
+                        } else {
+                            Icon(Icons.AutoMirrored.Filled.CallMerge, contentDescription = null, tint = OnEmerald, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Approve & Create Fix PR", color = OnEmerald, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = { onApply(false) },
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        enabled = !isSubmitting,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorderHighlight),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = BrandOnBg)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Approve & Direct Commit", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Manual Code Editor Dialog ─────────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ManualCodeEditorDialog(
+    issue: CodeIssue,
+    filePath: String,
+    content: String,
+    commitMessage: String,
+    isPrMode: Boolean,
+    isLoadingFile: Boolean,
+    isSubmitting: Boolean,
+    onContentChange: (String) -> Unit,
+    onCommitMessageChange: (String) -> Unit,
+    onPrModeChange: (Boolean) -> Unit,
+    onUseAiFix: () -> Unit,
+    onDismiss: () -> Unit,
+    onCommit: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = BrandSurface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder),
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.92f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Dialog Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Manual Code Editor",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = BrandOnBg
+                        )
+                        Text(
+                            text = filePath,
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = BrandEmeraldLight
+                        )
+                    }
+
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = BrandOnBgMuted)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Issue banner
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = BrandSurfaceHigh,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorderHighlight),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Fixing: ${issue.displayTitle}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = BrandOnBg
+                            )
+                            if (issue.line != null) {
+                                Text(
+                                    text = "Line ${issue.line}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BrandOnBgMuted
+                                )
+                            }
+                        }
+
+                        if (issue.displayFix != null) {
+                            TextButton(
+                                onClick = onUseAiFix,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = BrandEmeraldLight, modifier = Modifier.size(13.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Insert AI Fix", color = BrandEmeraldLight, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Code Editor text area
+                if (isLoadingFile) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .background(CodeBackground, RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = BrandEmerald, modifier = Modifier.size(28.dp))
+                            Spacer(Modifier.height(8.dp))
+                            Text("Loading file content from GitHub...", style = MaterialTheme.typography.bodySmall, color = BrandOnBgMuted)
+                        }
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = content,
+                        onValueChange = onContentChange,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            color = BrandOnBg
+                        ),
+                        placeholder = { Text("Enter or edit file code...", color = BrandGreige) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = CodeBackground,
+                            unfocusedContainerColor = CodeBackground,
+                            focusedBorderColor = BrandBorderHighlight,
+                            unfocusedBorderColor = BrandBorder
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Commit message
+                OutlinedTextField(
+                    value = commitMessage,
+                    onValueChange = onCommitMessageChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Commit Message", style = MaterialTheme.typography.labelSmall) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = BrandSurfaceHigh,
+                        unfocusedContainerColor = BrandSurfaceHigh,
+                        focusedBorderColor = BrandBorderHighlight,
+                        unfocusedBorderColor = BrandBorder
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // PR vs Direct Branch Commit Option
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = isPrMode,
+                            onCheckedChange = onPrModeChange,
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = BrandEmerald,
+                                checkmarkColor = OnEmerald,
+                                uncheckedColor = BrandBorderHighlight
+                            )
+                        )
+                        Text(
+                            text = "Create Fix Branch & Pull Request",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BrandOnBg
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Actions: Cancel & Commit
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", color = BrandOnBgMuted)
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    Button(
+                        onClick = onCommit,
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald),
+                        shape = RoundedCornerShape(8.dp),
+                        enabled = !isSubmitting && content.isNotBlank()
+                    ) {
+                        if (isSubmitting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = OnEmerald
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (isPrMode) "Creating PR..." else "Committing...", color = OnEmerald)
+                        } else {
+                            Icon(
+                                if (isPrMode) Icons.AutoMirrored.Filled.CallMerge else Icons.Default.Check,
+                                contentDescription = null,
+                                tint = OnEmerald,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (isPrMode) "Create PR" else "Commit Changes",
+                                color = OnEmerald,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
             }
         }

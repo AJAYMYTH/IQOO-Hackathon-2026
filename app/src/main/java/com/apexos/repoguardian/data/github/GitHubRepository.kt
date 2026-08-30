@@ -152,6 +152,48 @@ class GitHubRepository @Inject constructor(
             dataApi.getCheckRuns(owner, repo, ref)
         }
 
+    suspend fun commitFile(
+        owner: String,
+        repo: String,
+        filePath: String,
+        content: String,
+        commitMessage: String,
+        branch: String? = null
+    ): ApiResult<FileCommitResponse> = apiCall("commitFile($owner/$repo, path=$filePath)") {
+        val encodedContent = Base64.encodeToString(
+            content.toByteArray(Charsets.UTF_8),
+            Base64.NO_WRAP
+        )
+
+        val targetBranch = if (!branch.isNullOrBlank()) {
+            branch
+        } else {
+            try {
+                val repoDetail = dataApi.getRepo(owner, repo)
+                if (repoDetail.defaultBranch.isNotBlank()) repoDetail.defaultBranch else null
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        val existingSha: String? = try {
+            val fileRes = dataApi.getFileContent(owner, repo, filePath, ref = targetBranch)
+            if (fileRes.sha.isNotBlank()) fileRes.sha else null
+        } catch (e: Exception) {
+            null
+        }
+
+        dataApi.updateFile(
+            owner, repo, filePath,
+            UpdateFileRequest(
+                message = commitMessage,
+                content = encodedContent,
+                sha = existingSha,
+                branch = targetBranch
+            )
+        )
+    }
+
     suspend fun commitWorkflowFile(
         owner: String,
         repo: String,

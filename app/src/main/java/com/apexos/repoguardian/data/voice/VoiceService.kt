@@ -17,6 +17,11 @@ import javax.inject.Singleton
 
 sealed class VoiceIntent {
     data class Review(val query: String) : VoiceIntent()
+    data class WhatChanged(val query: String, val timeframe: String = "yesterday") : VoiceIntent()
+    data class FixIssue(val query: String) : VoiceIntent()
+    data class VerifyFix(val query: String) : VoiceIntent()
+    data class CreatePr(val query: String) : VoiceIntent()
+    data class ExplainRepo(val query: String) : VoiceIntent()
     data class CiCd(val query: String) : VoiceIntent()
     data class Chat(val prompt: String) : VoiceIntent()
     data class Dictation(val text: String) : VoiceIntent()
@@ -45,9 +50,14 @@ class VoiceService @Inject constructor(
 
     companion object {
         private const val TAG = "VoiceService"
-        private val REVIEW_KEYWORDS = listOf("review", "check", "analyze", "scan", "inspect", "diff", "bug")
-        private val CICD_KEYWORDS = listOf("ci", "cd", "pipeline", "workflow", "action", "deploy")
-        private val CHAT_KEYWORDS = listOf("ask", "chat", "explain", "why", "how", "what", "tell", "summarize")
+        private val WHAT_CHANGED_KEYWORDS = listOf("what changed", "since yesterday", "yesterday", "recent changes", "recent commits", "delta", "today's commits", "what's new")
+        private val PR_KEYWORDS = listOf("create pr", "open pr", "pull request", "ship", "submit pr", "create pull request")
+        private val VERIFY_KEYWORDS = listOf("verify", "generate test", "test fix", "run test", "validate fix", "unit test")
+        private val FIX_KEYWORDS = listOf("fix it", "auto fix", "apply fix", "solve issue", "remediate", "fix bug", "patch issue")
+        private val EXPLAIN_KEYWORDS = listOf("explain repo", "explain project", "explain architecture", "explain codebase", "project overview", "how does this project work")
+        private val REVIEW_KEYWORDS = listOf("review", "check", "analyze", "scan", "inspect", "diff", "audit", "security check", "bug scan")
+        private val CICD_KEYWORDS = listOf("ci", "cd", "pipeline", "workflow", "github actions", "deploy workflow")
+        private val CHAT_KEYWORDS = listOf("ask", "chat", "explain", "why", "how", "what", "tell", "summarize", "find")
     }
 
     fun isAvailable(): Boolean = SpeechRecognizer.isRecognitionAvailable(context)
@@ -178,6 +188,21 @@ class VoiceService @Inject constructor(
         val lower = text.lowercase()
 
         return when {
+            WHAT_CHANGED_KEYWORDS.any { lower.contains(it) } -> {
+                VoiceIntent.WhatChanged(text)
+            }
+            PR_KEYWORDS.any { lower.contains(it) } -> {
+                VoiceIntent.CreatePr(text)
+            }
+            VERIFY_KEYWORDS.any { lower.contains(it) } -> {
+                VoiceIntent.VerifyFix(text)
+            }
+            FIX_KEYWORDS.any { lower.contains(it) } -> {
+                VoiceIntent.FixIssue(text)
+            }
+            EXPLAIN_KEYWORDS.any { lower.contains(it) } -> {
+                VoiceIntent.ExplainRepo(text)
+            }
             REVIEW_KEYWORDS.any { lower.contains(it) } -> {
                 VoiceIntent.Review(text)
             }

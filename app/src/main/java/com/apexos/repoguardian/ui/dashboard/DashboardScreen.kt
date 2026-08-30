@@ -7,9 +7,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -56,6 +58,16 @@ fun DashboardScreen(
                 viewModel.resetVoiceState()
                 Toast.makeText(context, "🎙️ \"${state.text}\"", Toast.LENGTH_SHORT).show()
                 when (state.intent) {
+                    is com.apexos.repoguardian.data.voice.VoiceIntent.WhatChanged -> {
+                        viewModel.setViewFilter(DashboardViewFilter.WHAT_CHANGED)
+                        Toast.makeText(context, "Analyzing changes since yesterday...", Toast.LENGTH_SHORT).show()
+                    }
+                    is com.apexos.repoguardian.data.voice.VoiceIntent.ExplainRepo -> {
+                        navController.navigate(Routes.CHAT)
+                    }
+                    is com.apexos.repoguardian.data.voice.VoiceIntent.FixIssue,
+                    is com.apexos.repoguardian.data.voice.VoiceIntent.VerifyFix,
+                    is com.apexos.repoguardian.data.voice.VoiceIntent.CreatePr,
                     is com.apexos.repoguardian.data.voice.VoiceIntent.Review -> {
                         if (uiState.commits.isNotEmpty()) {
                             val latestCommit = uiState.commits.first()
@@ -63,7 +75,7 @@ fun DashboardScreen(
                                 Routes.review(uiState.repoOwner, uiState.repoName, latestCommit.sha)
                             )
                         } else {
-                            Toast.makeText(context, "No commits available to review", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "No commits available to inspect", Toast.LENGTH_SHORT).show()
                         }
                     }
                     is com.apexos.repoguardian.data.voice.VoiceIntent.CiCd -> {
@@ -367,51 +379,114 @@ fun DashboardScreen(
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            // Overview Card
+                            // 1. Privacy Mode Guarantee Banner
+                            item {
+                                PrivacyModeBanner()
+                            }
+
+                            // 2. Overview Card
                             item {
                                 RepoSummaryCard(
                                     owner = uiState.repoOwner,
                                     name = uiState.repoName,
                                     commitsCount = uiState.commits.size,
+                                    healthScore = uiState.repoHealthScore,
                                     onBrowseClick = { navController.navigate(Routes.REPO_PICKER) }
                                 )
                             }
 
-                            // Section Title
+                            // 3. View Filter Chips (All Commits / What Changed / Health Timeline)
                             item {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(top = 8.dp, bottom = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text(
-                                        text = "Recent Commits",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = BrandOnBg
-                                    )
-                                    Text(
-                                        text = "${uiState.commits.size} commits",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = BrandOnBgMuted
-                                    )
+                                    DashboardViewFilter.values().forEach { filter ->
+                                        FilterChip(
+                                            selected = uiState.selectedFilter == filter,
+                                            onClick = { viewModel.setViewFilter(filter) },
+                                            label = {
+                                                Text(
+                                                    text = filter.label,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = if (uiState.selectedFilter == filter) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = BrandEmerald.copy(alpha = 0.2f),
+                                                selectedLabelColor = BrandEmeraldLight,
+                                                containerColor = BrandSurface,
+                                                labelColor = BrandOnBgMuted
+                                            ),
+                                            border = FilterChipDefaults.filterChipBorder(
+                                                borderColor = if (uiState.selectedFilter == filter) BrandEmeraldLight else BrandBorder,
+                                                enabled = true,
+                                                selected = uiState.selectedFilter == filter
+                                            )
+                                        )
+                                    }
                                 }
                             }
 
-                            // Commit list items
-                            items(uiState.commits) { commit ->
-                                CommitItem(
-                                    commit = commit,
-                                    onClick = {
-                                        navController.navigate(
-                                            Routes.review(uiState.repoOwner, uiState.repoName, commit.sha)
+                            // 4. Conditional Content based on selected filter
+                            when (uiState.selectedFilter) {
+                                DashboardViewFilter.WHAT_CHANGED -> {
+                                    item {
+                                        WhatChangedDeltaCard(
+                                            delta = uiState.deltaSummary,
+                                            repoName = uiState.repoName,
+                                            onGenerateAiDigest = { viewModel.generateAiDailyDigest() }
                                         )
                                     }
-                                )
+                                }
+                                DashboardViewFilter.HEALTH_TIMELINE -> {
+                                    item {
+                                        RepoHealthTimelineCard(
+                                            timeline = uiState.healthTimeline,
+                                            averageScore = uiState.repoHealthScore
+                                        )
+                                    }
+                                }
+                                DashboardViewFilter.ALL_COMMITS -> {
+                                    // Section Title
+                                    item {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 4.dp, bottom = 2.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Recent Commits",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = BrandOnBg
+                                            )
+                                            Text(
+                                                text = "${uiState.commits.size} commits",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = BrandOnBgMuted
+                                            )
+                                        }
+                                    }
+
+                                    // Commit list items
+                                    items(uiState.commits) { commit ->
+                                        CommitItem(
+                                            commit = commit,
+                                            onClick = {
+                                                navController.navigate(
+                                                    Routes.review(uiState.repoOwner, uiState.repoName, commit.sha)
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
                             }
 
                             item {
@@ -434,10 +509,45 @@ fun DashboardScreen(
 }
 
 @Composable
+private fun PrivacyModeBanner() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = BrandEmeraldMuted.copy(alpha = 0.15f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmeraldLight.copy(alpha = 0.35f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(BrandEmeraldLight)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "0 BYTES CLOUD UPLOAD",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp),
+                color = BrandEmeraldLight
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "• 100% On-Device AI Execution",
+                style = MaterialTheme.typography.labelSmall,
+                color = BrandOnBgMuted
+            )
+        }
+    }
+}
+
+@Composable
 private fun RepoSummaryCard(
     owner: String,
     name: String,
     commitsCount: Int,
+    healthScore: Int = 90,
     onBrowseClick: () -> Unit
 ) {
     Surface(
@@ -455,16 +565,16 @@ private fun RepoSummaryCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
                             .background(BrandEmeraldMuted.copy(alpha = 0.5f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Code,
+                            imageVector = Icons.Default.Shield,
                             contentDescription = null,
                             tint = BrandEmeraldLight,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                     Spacer(Modifier.width(10.dp))
@@ -483,7 +593,290 @@ private fun RepoSummaryCard(
                     }
                 }
 
+                // Health Score Pill
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (healthScore >= 80) StatusPass.copy(alpha = 0.15f) else SeverityWarning.copy(alpha = 0.15f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (healthScore >= 80) StatusPass.copy(alpha = 0.4f) else SeverityWarning.copy(alpha = 0.4f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "$healthScore/100",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = if (healthScore >= 80) StatusPass else SeverityWarning
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
+@Composable
+private fun WhatChangedDeltaCard(
+    delta: DailyDeltaSummary,
+    repoName: String,
+    onGenerateAiDigest: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Insights,
+                        contentDescription = null,
+                        tint = BrandEmeraldLight,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "What Changed Since Yesterday?",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandOnBg
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = BrandSurfaceHigh
+                ) {
+                    Text(
+                        text = "${delta.commitsSinceYesterday} Commits",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = BrandEmeraldLight,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Stats grid
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    color = BrandSurfaceHigh
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("Active Authors", style = MaterialTheme.typography.labelSmall, color = BrandOnBgMuted)
+                        Spacer(Modifier.height(2.dp))
+                        Text("${delta.authorsCount}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = BrandOnBg)
+                    }
+                }
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    color = BrandSurfaceHigh
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("Delta Health", style = MaterialTheme.typography.labelSmall, color = BrandOnBgMuted)
+                        Spacer(Modifier.height(2.dp))
+                        Text("${delta.averageHealthScore}/100", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = StatusPass)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Key commit highlights
+            if (delta.keyChanges.isNotEmpty()) {
+                Text(
+                    text = "Key Activity Highlights:",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = BrandOnBg
+                )
+                Spacer(Modifier.height(6.dp))
+                delta.keyChanges.forEach { change ->
+                    Row(
+                        modifier = Modifier.padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text("• ", color = BrandEmeraldLight, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = change,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BrandOnBgMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // AI Delta Digest Area
+            if (delta.aiDigestText != null) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = BrandSurfaceHigh,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorderHighlight),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = BrandEmeraldLight, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("AI Executive Daily Digest", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = BrandEmeraldLight)
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = delta.aiDigestText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BrandOnBg,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            } else {
+                Button(
+                    onClick = onGenerateAiDigest,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandSurfaceHigh, contentColor = BrandEmeraldLight),
+                    shape = RoundedCornerShape(8.dp),
+                    enabled = !delta.isLoadingAiDigest
+                ) {
+                    if (delta.isLoadingAiDigest) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 1.5.dp, color = BrandEmeraldLight)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Synthesizing Daily Delta...", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Synthesize AI Daily Digest", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RepoHealthTimelineCard(
+    timeline: List<HealthTimelinePoint>,
+    averageScore: Int
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = BrandSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Timeline,
+                        contentDescription = null,
+                        tint = BrandEmeraldLight,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Repository Health Timeline",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandOnBg
+                    )
+                }
+
+                Text(
+                    text = "Avg $averageScore/100",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = StatusPass
+                )
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            if (timeline.isEmpty()) {
+                Text(
+                    text = "Insufficient commit history to construct timeline.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = BrandOnBgMuted
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    timeline.forEach { point ->
+                        val badgeColor = Color(point.riskLevel.badgeColorHex)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = BrandSurfaceHigh,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .clip(CircleShape)
+                                            .background(badgeColor)
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = point.dateLabel,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = BrandOnBg
+                                        )
+                                        Text(
+                                            text = "${point.commitCount} commit(s) evaluated",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = BrandOnBgMuted
+                                        )
+                                    }
+                                }
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "${point.score}/100",
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = badgeColor
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = point.riskLevel.label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = BrandOnBgMuted
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -545,7 +938,7 @@ fun CommitItem(commit: Commit, onClick: () -> Unit) {
                     )
                 }
 
-                // Monospace SHA badge
+                // SHA badge
                 Surface(
                     shape = RoundedCornerShape(6.dp),
                     color = BrandSurfaceHigh,
