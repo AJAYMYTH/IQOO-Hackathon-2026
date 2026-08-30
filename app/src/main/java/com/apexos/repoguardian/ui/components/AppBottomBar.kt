@@ -55,50 +55,45 @@ fun AppBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 20.dp, end = 20.dp, bottom = 12.dp, top = 4.dp),
+            .padding(start = 16.dp, end = 16.dp, bottom = 10.dp, top = 4.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
-        // Sleek Minimalist Floating Pill Navbar
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(60.dp),
-            shape = RoundedCornerShape(22.dp),
-            color = BrandSurfaceElev,
+                .height(58.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = BrandSurface,
             border = BorderStroke(1.dp, BrandBorder)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 NavigationTab.values().forEach { tab ->
                     val isSelected = currentRoute == tab.route
 
+                    // Active: indigo accent. Inactive: muted slate gray
                     val iconTint by animateColorAsState(
-                        targetValue = if (isSelected) Color.White else BrandGreige,
+                        targetValue = if (isSelected) BrandEmerald else BrandGreige,
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         label = "tab_icon_tint"
                     )
 
                     val textColor by animateColorAsState(
-                        targetValue = if (isSelected) Color.White else BrandGreige,
+                        targetValue = if (isSelected) BrandEmerald else BrandGreige,
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         label = "tab_text_color"
                     )
 
+                    // Active pill gets a very subtle indigo tint background
                     val activeBgColor by animateColorAsState(
-                        targetValue = if (isSelected) BrandSurfaceHigh else Color.Transparent,
+                        targetValue = if (isSelected) BrandEmeraldMuted else Color.Transparent,
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         label = "tab_active_bg"
-                    )
-
-                    val activeBorderColor by animateColorAsState(
-                        targetValue = if (isSelected) BrandBorderHighlight else Color.Transparent,
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                        label = "tab_active_border"
                     )
 
                     val interactionSource = remember { MutableInteractionSource() }
@@ -106,10 +101,9 @@ fun AppBottomBar(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(16.dp))
+                            .height(50.dp)
+                            .clip(RoundedCornerShape(14.dp))
                             .background(activeBgColor)
-                            .border(1.dp, activeBorderColor, RoundedCornerShape(16.dp))
                             .clickable(
                                 interactionSource = interactionSource,
                                 indication = null
@@ -136,11 +130,11 @@ fun AppBottomBar(
                                 tint = iconTint,
                                 modifier = Modifier.size(20.dp)
                             )
-                            Spacer(Modifier.height(2.dp))
+                            Spacer(Modifier.height(3.dp))
                             Text(
                                 text = tab.label,
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                                 ),
                                 color = textColor,

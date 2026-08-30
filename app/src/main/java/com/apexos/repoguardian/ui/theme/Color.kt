@@ -2,66 +2,72 @@ package com.apexos.repoguardian.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// ─── Obsidian Mono + Monochrome One-Accent Palette ────────────────────────────
-// Minimal · Technical · Premium · Professional · Clean
+// ─── Slate Dev Dark — Professional Developer Tool Theme ───────────────────────
+// Inspired by: GitHub Mobile dark, Linear, Vercel dashboard
+// Logic: Near-black slate canvas → 3-level surface lift → one indigo accent
+// Accent principle: #6E78FF (indigo-periwinkle) — trusted, developer-native,
+//                   not purple-AI-cliché, not neon, not teal
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Surface & Background Hierarchy ──────────────────────────────────────────
-val BrandBackground        = Color(0xFF000000)   // Complete Pitch Black #000000
-val BrandSurface           = Color(0xFF0D0D0F)   // Primary Surface / Cards #0D0D0F
-val BrandSurfaceHigh       = Color(0xFF141417)   // Mid Surface #141417
-val BrandSurfaceElev       = Color(0xFF18181C)   // Elevated Surface / Floating Nav #18181C
-val BrandBorder            = Color(0xFF222226)   // Thin Clean Minimal Hairline Border #222226
-val BrandBorderHighlight   = Color(0xFF38383E)   // Active focus / selected border #38383E
+// ─── Canvas & Surface Hierarchy ──────────────────────────────────────────────
+// Each level is ~8 luminance points lighter — enough to feel distinct without
+// looking washed out. The subtle blue undertone (0D0E11) lets cards lift.
+val BrandBackground        = Color(0xFF0D0E11)  // Root canvas — near-black, cool slate
+val BrandSurface           = Color(0xFF161820)  // Cards, list rows
+val BrandSurfaceHigh       = Color(0xFF1E2030)  // Elevated cards, selected states
+val BrandSurfaceElev       = Color(0xFF252840)  // Sheets, modals, bottom nav pill
+val BrandBorder            = Color(0xFF2A2D3E)  // Default hairline border
+val BrandBorderHighlight   = Color(0xFF3D4163)  // Active / focused border
 
-// ─── Typography & Content Neutral Tokens ─────────────────────────────────────
-val BrandOnBg              = Color(0xFFFFFFFF)   // Complete White #FFFFFF for Fonts & Primary Icons
-val BrandOnBgMuted         = Color(0xFFA1A1AA)   // Secondary Text #A1A1AA
-val BrandGreige            = Color(0xFF71717A)   // Muted Text #71717A
-val BrandOnBgSubtle        = Color(0xFF52525B)   // Inactive tab icons, subtle placeholders #52525B
+// ─── Typography — 3 deliberate levels ────────────────────────────────────────
+val BrandOnBg              = Color(0xFFF0F0F4)  // Primary text — warm off-white, not blinding
+val BrandOnBgMuted         = Color(0xFF8B8B9B)  // Secondary labels, descriptions
+val BrandGreige            = Color(0xFF52525F)  // Muted — timestamps, placeholders
+val BrandOnBgSubtle        = Color(0xFF3A3A47)  // Disabled, inactive tab icons
 
-// ─── Neutral Scale Aliases ───────────────────────────────────────────────────
+// ─── Primary Accent — Indigo/Periwinkle #6E78FF ──────────────────────────────
+// Why: GitHub uses this family for links, Linear uses it for active states.
+// Reads "developer tooling" without AI-glow. Stands out on slate without neon.
+val BrandEmerald           = Color(0xFF6E78FF)  // Primary accent — indigo
+val BrandEmeraldLight      = Color(0xFF9AA0FF)  // Light accent — hover, secondary badges
+val BrandEmeraldDark       = Color(0xFF4A55E0)  // Pressed state
+val BrandEmeraldMuted      = Color(0x286E78FF)  // 16% alpha — tinted containers, tags
+val OnEmerald              = Color(0xFFFFFFFF)  // Text/icon on accent-colored surfaces
+
+// ─── Semantic Status Colors — distinct and unambiguous ───────────────────────
+val StatusPass             = Color(0xFF3FB950)  // GitHub green — success / pass
+val StatusFail             = Color(0xFFFF5C7A)  // Error — red
+val StatusPending          = Color(0xFFD29922)  // Warning — amber (GitHub amber)
+val StatusInfo             = Color(0xFF58A6FF)  // Info — GitHub blue
+
+// ─── Severity Badges ─────────────────────────────────────────────────────────
+val SeverityCritical       = Color(0xFFFF5C7A)  // Red — critical issues
+val SeverityWarning        = Color(0xFFD29922)  // Amber — warnings
+val SeverityInfo           = Color(0xFF58A6FF)  // Blue — info / suggestions
+
+// ─── Code & Diff Blocks ──────────────────────────────────────────────────────
+val CodeBackground         = Color(0xFF0A0B0E)  // Slightly deeper than canvas for code
+val CodeAddition           = Color(0x283FB950)  // 16% green tint — added lines
+val CodeDeletion           = Color(0x28FF5C7A)  // 16% red tint — removed lines
+val CodeLineNumber         = BrandGreige        // Line numbers
+
+// ─── Glassmorphism / Frosted Tokens (used in bottom nav, overlays) ───────────
+val GlassBackground        = Color(0xF0161820)  // Frosted card surface
+val GlassBackgroundElev    = Color(0xF2252840)  // Frosted sheet
+val GlassBorder            = Color(0x3A2A2D3E)  // Frosted hairline
+
+// ─── Backward Compatibility Aliases ──────────────────────────────────────────
 val NeutralTitanium        = BrandOnBg
 val NeutralGraphite        = BrandOnBgMuted
 val NeutralMetadata        = BrandGreige
 val NeutralSubtle          = BrandOnBgSubtle
-
-// ─── Primary Accent — Pure White (#FFFFFF) & Pure Black (#000000) ────────────
-val BrandEmerald           = Color(0xFFFFFFFF)   // Pure White Accent for CTAs & Active Elements
-val BrandEmeraldLight      = Color(0xFFFFFFFF)   // Pure White for Highlighting, Active Badges & Icons
-val BrandEmeraldDark       = Color(0xFFE4E4E7)   // Pressed container state
-val BrandEmeraldMuted      = Color(0x24FFFFFF)   // 14% alpha subtle white backing
-val OnEmerald              = Color(0xFF000000)   // High-contrast complete Black on White buttons/containers
-
-// ─── Semantic Status ─────────────────────────────────────────────────────────
-val StatusPass             = Color(0xFFFFFFFF)   // Complete White for Success / Pass
-val StatusFail             = Color(0xFFFF5C7A)   // Error #FF5C7A
-val StatusPending          = Color(0xFFF59E0B)   // Amber-500 warning
-val StatusInfo             = Color(0xFFFFFFFF)   // Pure White information
-
-// ─── Severity Semantic ───────────────────────────────────────────────────────
-val SeverityCritical       = Color(0xFFFF5C7A)
-val SeverityWarning        = Color(0xFFF59E0B)
-val SeverityInfo           = Color(0xFFFFFFFF)
-
-// ─── Frosted Glassmorphism Tokens ────────────────────────────────────────────
-val GlassBackground        = Color(0xEB0D0D0F)   // Frosted primary surface
-val GlassBackgroundElev    = Color(0xF218181C)   // Frosted elevated surface
-val GlassBorder            = Color(0x33222226)   // Hairline border
-
-// ─── Code & Terminal Blocks ──────────────────────────────────────────────────
-val CodeBackground         = Color(0xFF0A0A0C)   // Matte deep code container
-val CodeAddition           = Color(0x20FFFFFF)   // Subtle white diff bg
-val CodeDeletion           = Color(0x24FF5C7A)   // Subtle red diff bg
-val CodeLineNumber         = BrandGreige         // Line numbers
-
-// ─── Backward Compatibility Aliases ──────────────────────────────────────────
 val Primary                = BrandEmerald
 val PrimaryDark            = BrandEmeraldDark
 val PrimaryLight           = BrandEmeraldMuted
 val OnPrimary              = OnEmerald
-val Secondary              = Color(0xFFFFFFFF)
-val SecondaryDark          = Color(0xFFE4E4E7)
-val OnSecondary            = Color(0xFF000000)
+val Secondary              = BrandEmeraldLight
+val SecondaryDark          = BrandEmeraldDark
+val OnSecondary            = OnEmerald
 val DarkBackground         = BrandBackground
 val DarkSurface            = BrandSurface
 val DarkSurfaceVariant     = BrandSurfaceHigh

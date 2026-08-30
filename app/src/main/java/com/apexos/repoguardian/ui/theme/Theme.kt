@@ -5,45 +5,45 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val RepoGuardianDarkScheme = darkColorScheme(
-    // Brand Primary
+    // Primary — Indigo accent for CTAs, active states, links
     primary              = BrandEmerald,
     onPrimary            = OnEmerald,
     primaryContainer     = BrandEmeraldMuted,
     onPrimaryContainer   = BrandEmeraldLight,
 
-    // Secondary Accent
-    secondary            = BrandEmerald,
+    // Secondary — lighter indigo for secondary actions
+    secondary            = BrandEmeraldLight,
     onSecondary          = OnEmerald,
-    secondaryContainer   = BrandSurfaceElev,
-    onSecondaryContainer = BrandEmeraldLight,
+    secondaryContainer   = BrandSurfaceHigh,
+    onSecondaryContainer = BrandOnBg,
 
-    // Canvas Background
+    // Canvas — the root background
     background           = BrandBackground,
     onBackground         = BrandOnBg,
 
-    // Refined Dark Surfaces
+    // Surface hierarchy — 3 levels for proper card depth
     surface              = BrandSurface,
     onSurface            = BrandOnBg,
     surfaceVariant       = BrandSurfaceHigh,
     onSurfaceVariant     = BrandOnBgMuted,
 
-    // Outlines & Borders
+    // Borders
     outline              = BrandBorder,
     outlineVariant       = BrandBorderHighlight,
 
     // Error
     error                = StatusFail,
     onError              = Color(0xFFFFFFFF),
-    errorContainer       = Color(0x2BFF5C7A),
+    errorContainer       = Color(0x28FF5C7A),
     onErrorContainer     = Color(0xFFFF859B),
 
-    // Inverse
+    // Inverse (snackbars, tooltips)
     inverseSurface       = BrandOnBg,
     inverseOnSurface     = BrandBackground,
     inversePrimary       = BrandEmeraldDark,
 
-    // Scrim
-    scrim                = BrandBackground.copy(alpha = 0.85f),
+    // Scrim & tint
+    scrim                = Color(0xCC0D0E11),
     surfaceTint          = BrandEmerald
 )
 
