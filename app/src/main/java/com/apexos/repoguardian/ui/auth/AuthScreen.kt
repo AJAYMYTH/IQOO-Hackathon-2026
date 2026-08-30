@@ -71,40 +71,11 @@ fun AuthScreen(
         }
     }
 
-    // Ambient glow pulse
-    val infiniteTransition = rememberInfiniteTransition(label = "auth_glow")
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.10f,
-        targetValue = 0.20f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = EaseInOutSine),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glow_alpha"
-    )
-
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(BrandBackground)
     ) {
-        // Ambient glow
-        Box(
-            modifier = Modifier
-                .size(280.dp)
-                .align(Alignment.TopCenter)
-                .offset(y = (-40).dp)
-                .blur(90.dp)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            BrandEmerald.copy(alpha = glowAlpha),
-                            Color.Transparent
-                        )
-                    ),
-                    CircleShape
-                )
-        )
 
         Column(
             modifier = Modifier
@@ -497,31 +468,17 @@ private fun WaitingState(
                 )
                 Spacer(Modifier.height(12.dp))
 
-                // Code with emerald glow
-                Box(contentAlignment = Alignment.Center) {
-                    // Blur glow behind code
-                    Text(
-                        text = userCode,
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 36.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 6.sp
-                        ),
-                        color = BrandEmerald.copy(alpha = 0.25f),
-                        modifier = Modifier.blur(12.dp)
-                    )
-                    Text(
-                        text = userCode,
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 36.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 6.sp
-                        ),
-                        color = BrandEmerald
-                    )
-                }
+                // Clean Monospace Code Display
+                Text(
+                    text = userCode,
+                    style = MaterialTheme.typography.headlineLarge.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 34.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 5.sp
+                    ),
+                    color = BrandEmerald
+                )
 
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {

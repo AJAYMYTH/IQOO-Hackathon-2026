@@ -68,7 +68,7 @@ private val onboardingPages = listOf(
         headline = "GitHub Connected.\nAI Powered.",
         subhead = "Your repos. Intelligent insights.",
         body = "Connect your GitHub account once via secure Device Flow OAuth. Then pick any repo and let the AI analyze commits, detect bugs, review diffs, and generate pull requests — all in one tap.",
-        accentColor = Color(0xFF60A5FA),
+        accentColor = BrandEmerald,
         features = listOf(
             Icons.Filled.AccountTree to "Browse all your GitHub repositories",
             Icons.Filled.BugReport to "AI code review with bug & security detection",
@@ -80,7 +80,7 @@ private val onboardingPages = listOf(
         headline = "Think Mode.\nDeep Reasoning.",
         subhead = "See how the AI thinks.",
         body = "Enable Think Mode to watch the AI reason step-by-step through your code — chain-of-thought visible, CI/CD pipeline generation, and a full-context chat assistant baked in.",
-        accentColor = Color(0xFFA78BFA),
+        accentColor = BrandEmerald,
         features = listOf(
             Icons.Filled.Lightbulb to "Chain-of-thought reasoning you can read",
             Icons.Filled.Terminal to "CI/CD YAML pipeline generator",
@@ -105,24 +105,6 @@ fun OnboardingScreen(
             .fillMaxSize()
             .background(BrandBackground)
     ) {
-        // ── Ambient glow blob behind content ─────────────────────────────────
-        val currentAccent = onboardingPages[currentPage].accentColor
-        Box(
-            modifier = Modifier
-                .size(340.dp)
-                .align(Alignment.TopCenter)
-                .offset(y = (-60).dp)
-                .blur(120.dp)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            currentAccent.copy(alpha = 0.18f),
-                            Color.Transparent
-                        )
-                    ),
-                    CircleShape
-                )
-        )
 
         Column(
             modifier = Modifier.fillMaxSize(),

@@ -245,9 +245,10 @@ fun SettingsScreen(
                         showClearCacheDialog = false
                         viewModel.clearAppCache()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = BrandEmerald)
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandSurfaceElev),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
                 ) {
-                    Text("Clear Cache", color = OnEmerald)
+                    Text("Clear Cache", color = BrandOnBg, fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {

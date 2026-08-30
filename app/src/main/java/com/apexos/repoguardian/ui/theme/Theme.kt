@@ -12,12 +12,12 @@ private val RepoGuardianDarkScheme = darkColorScheme(
     onPrimaryContainer   = BrandEmeraldLight,
 
     // Secondary Accent
-    secondary            = Secondary,
-    onSecondary          = OnSecondary,
-    secondaryContainer   = Color(0xFF1E293B),
-    onSecondaryContainer = Color(0xFF93C5FD),
+    secondary            = BrandEmerald,
+    onSecondary          = OnEmerald,
+    secondaryContainer   = BrandSurfaceElev,
+    onSecondaryContainer = BrandEmeraldLight,
 
-    // Pure Black Background
+    // Canvas Background
     background           = BrandBackground,
     onBackground         = BrandOnBg,
 
@@ -34,8 +34,8 @@ private val RepoGuardianDarkScheme = darkColorScheme(
     // Error
     error                = StatusFail,
     onError              = Color(0xFFFFFFFF),
-    errorContainer       = Color(0xFF3B1212),
-    onErrorContainer     = Color(0xFFFCA5A5),
+    errorContainer       = Color(0x2BFF5C7A),
+    onErrorContainer     = Color(0xFFFF859B),
 
     // Inverse
     inverseSurface       = BrandOnBg,
