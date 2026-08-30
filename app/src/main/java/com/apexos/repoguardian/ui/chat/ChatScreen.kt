@@ -1,16 +1,12 @@
 package com.apexos.repoguardian.ui.chat
 
-import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -41,7 +37,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.apexos.repoguardian.data.voice.VoiceState
 import com.apexos.repoguardian.navigation.Routes
 import com.apexos.repoguardian.ui.components.AiThinkingIndicator
 import com.apexos.repoguardian.ui.components.AppBottomBar
@@ -56,36 +51,12 @@ fun ChatScreen(
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val voiceState by viewModel.voiceState.collectAsState()
     val listState = rememberLazyListState()
     var inputText by remember { mutableStateOf("") }
     var showGuide by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val isImeVisible = WindowInsets.isImeVisible
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) viewModel.startVoiceDictation()
-        else Toast.makeText(context, "Microphone permission required for voice dictation", Toast.LENGTH_SHORT).show()
-    }
-
-    // Handle voice speech-to-text dictation result
-    LaunchedEffect(voiceState) {
-        when (val state = voiceState) {
-            is VoiceState.Result -> {
-                inputText = if (inputText.isBlank()) state.text else "$inputText ${state.text}"
-                viewModel.resetVoiceState()
-                Toast.makeText(context, "🎙️ \"${state.text}\"", Toast.LENGTH_SHORT).show()
-            }
-            is VoiceState.Error -> {
-                Toast.makeText(context, state.message, Toast.LENGTH_SHORT).show()
-                viewModel.resetVoiceState()
-            }
-            else -> {}
-        }
-    }
 
     // Analyze current generation & thinking state cleanly
     val lastMessage = uiState.messages.lastOrNull()
@@ -471,39 +442,7 @@ fun ChatScreen(
                                 shape = RoundedCornerShape(16.dp)
                             )
 
-                            Spacer(modifier = Modifier.width(6.dp))
-
-                            // Mic Voice Dictation Button
-                            IconButton(
-                                onClick = {
-                                    if (voiceState is VoiceState.Listening) {
-                                        viewModel.stopVoiceDictation()
-                                    } else {
-                                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                    }
-                                },
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (voiceState is VoiceState.Listening) StatusFail.copy(alpha = 0.2f)
-                                        else BrandSurfaceElev
-                                    )
-                                    .border(
-                                        1.dp,
-                                        if (voiceState is VoiceState.Listening) StatusFail else BrandBorder,
-                                        CircleShape
-                                    )
-                            ) {
-                                Icon(
-                                    imageVector = if (voiceState is VoiceState.Listening) Icons.Default.MicOff else Icons.Default.Mic,
-                                    contentDescription = "Voice Dictation",
-                                    tint = if (voiceState is VoiceState.Listening) StatusFail else BrandEmeraldLight,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
 
                             IconButton(
                                 onClick = {
