@@ -35,6 +35,7 @@ import com.apexos.repoguardian.data.llm.ReviewResult
 import com.apexos.repoguardian.data.llm.Severity
 import com.apexos.repoguardian.navigation.Routes
 import com.apexos.repoguardian.ui.components.AiThinkingIndicator
+import com.apexos.repoguardian.ui.components.CodeSnippetView
 import com.apexos.repoguardian.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -306,6 +307,49 @@ fun ReviewScreen(
                 } else {
                     items(filtered, key = { "${it.file}:${it.line}:${it.displayTitle}" }) { issue ->
                         IssueCard(issue = issue)
+                    }
+                }
+
+                if (!review.fixedCode.isNullOrBlank()) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = BrandSurface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BrandEmerald.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        Icons.Default.AutoFixHigh,
+                                        contentDescription = null,
+                                        tint = BrandEmeraldLight,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = "Proposed Remediation Patch",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrandOnBg
+                                    )
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                val clipboard = LocalClipboardManager.current
+                                val ctx = LocalContext.current
+                                CodeSnippetView(
+                                    code = review.fixedCode,
+                                    language = "kotlin",
+                                    onCopy = {
+                                        clipboard.setText(AnnotatedString(it))
+                                        Toast.makeText(ctx, "Patch copied to clipboard", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -695,12 +739,25 @@ fun IssueCard(issue: CodeIssue) {
                             )
                         }
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = fix,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = BrandOnBg,
-                            lineHeight = 18.sp
-                        )
+                        if (fix.contains("\n") || fix.contains("```") || fix.contains("(") || fix.contains("fun ") || fix.contains("val ") || fix.contains("var ")) {
+                            val cleanCode = fix.removePrefix("```kotlin").removePrefix("```").removeSuffix("```").trim()
+                            val lang = issue.file?.substringAfterLast('.', "") ?: "kotlin"
+                            CodeSnippetView(
+                                code = cleanCode,
+                                language = lang,
+                                onCopy = {
+                                    clipboardManager.setText(AnnotatedString(it))
+                                    Toast.makeText(context, "Fix code copied", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        } else {
+                            Text(
+                                text = fix,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BrandOnBg,
+                                lineHeight = 18.sp
+                            )
+                        }
                     }
                 }
             }
